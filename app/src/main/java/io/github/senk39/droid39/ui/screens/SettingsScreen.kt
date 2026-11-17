@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.BuildConfig
+import io.github.senk39.droid39.core.Permissions
 import io.github.senk39.droid39.core.Text as T
 import io.github.senk39.droid39.media.ScrobbleBroadcaster
 import io.github.senk39.droid39.sync.Jobs
@@ -100,8 +101,23 @@ fun SettingsScreen() {
             }
             if (s.protocol == "webdav") Toggle("HTTPS (port 5006)", "Wymaga certyfikatu zaufanego przez Androida", s.https) { s.https = it; g.nas.invalidate() }
             var test by remember { mutableStateOf<String?>(null) }
+            var lanGranted by remember { mutableStateOf(Permissions.localNetworkGranted(ctx)) }
+            val lanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+                lanGranted = ok
+                if (ok) g.nas.invalidate()
+                else test = "Bez zgody na sieć lokalną NAS w LAN jest niedostępny. " + Permissions.LOCAL_NETWORK_HINT
+            }
+            if (!lanGranted) {
+                Text("Android 17: brak zgody na dostęp do sieci lokalnej – bez niej połączenie z NAS w LAN się nie uda.",
+                    Modifier.padding(horizontal = 16.dp), color = C39.Gold, fontSize = 13.sp)
+            }
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!lanGranted) Button39("Zezwól na sieć lokalną") { lanLauncher.launch(Permissions.LOCAL_NETWORK) }
                 Button39("Testuj połączenie") {
+                    if (!lanGranted) {
+                        lanLauncher.launch(Permissions.LOCAL_NETWORK)
+                        return@Button39
+                    }
                     test = "Łączenie…"
                     scope.launch {
                         test = withContext(Dispatchers.IO) {

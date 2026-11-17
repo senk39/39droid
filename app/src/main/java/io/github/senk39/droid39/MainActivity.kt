@@ -4,7 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import io.github.senk39.droid39.core.Permissions
+import kotlinx.coroutines.launch
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -61,6 +67,20 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) Nav.playerOpen = true
+        if (intent?.action == android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) {
+            val query = intent.getStringExtra(android.app.SearchManager.QUERY).orEmpty()
+            val g = App.graph
+            g.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val lib = g.library
+                val rows = when {
+                    query.isBlank() -> lib.bestTracks().shuffled().take(500)
+                    else -> lib.searchNodes(query, 5).firstOrNull { it.kind in setOf("vocap", "vocal", "variant", "album", "folder", "root") }
+                        ?.let { lib.nodeTracks(it).shuffled().take(1000) } ?: lib.search(query, 200)
+                }
+                if (rows.isNotEmpty()) g.player.play(rows, 0, false, "Wyszukiwanie głosowe: $query")
+            }
+            Nav.playerOpen = true
+        }
     }
 
     companion object {
@@ -73,6 +93,20 @@ class MainActivity : ComponentActivity() {
 private fun Root() {
     val g = App.graph
     val settingsV by g.settings.changes.collectAsState()
+    val ctx = LocalContext.current
+    // Android 17: zgoda na sieć lokalną (NAS w LAN) – prośba przy starcie, gdy NAS jest już skonfigurowany
+    val lanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            g.nas.invalidate()
+            g.scope.launch { g.sync.syncNow() }
+        }
+    }
+    LaunchedEffect(settingsV) {
+        if (g.settings.nasConfigured && !Permissions.localNetworkGranted(ctx) && !lanAsked) {
+            lanAsked = true
+            lanLauncher.launch(Permissions.LOCAL_NETWORK)
+        }
+    }
     val row = rememberCurrentTrack()
     val artColor = rememberLoad(row?.artKey, settingsV) {
         if (!g.settings.accentFromArt) null
@@ -96,6 +130,9 @@ private fun Root() {
         }
     }
 }
+
+/** Prośba o sieć lokalną najwyżej raz na uruchomienie (odmowę obsługują Ustawienia). */
+private var lanAsked = false
 
 @Composable
 private fun Screen(r: Route) {

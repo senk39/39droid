@@ -26,6 +26,7 @@ import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -140,9 +141,22 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun resolve(items: List<MediaItem>): MutableList<MediaItem> {
+        // polecenie głosowe (Android Auto / Asystent): element z samym zapytaniem – wyniki wyszukiwania w bibliotece
+        val query = items.singleOrNull()?.takeIf { it.mediaId.isEmpty() }?.requestMetadata?.searchQuery
+        if (query != null) return voiceSearch(query).map(::item).toMutableList()
         val ids = items.mapNotNull { it.mediaId.toIntOrNull() }
         val rows = g.library.tracks(ids).associateBy { it.id }
         return ids.mapNotNull { rows[it]?.let(::item) }.toMutableList()
+    }
+
+    /** „Odtwórz Miku w 39droid”: utwory pasujące do zapytania; puste zapytanie – Najlepsze w losowej kolejności. */
+    private fun voiceSearch(query: String): List<TrackRow> {
+        val lib = g.library
+        if (query.isBlank()) return lib.bestTracks().shuffled().take(500)
+        lib.searchNodes(query, 5).firstOrNull { it.kind in setOf("vocap", "vocal", "variant", "album", "folder", "root") }?.let { n ->
+            return lib.nodeTracks(n).shuffled().take(1000)
+        }
+        return lib.search(query, 200)
     }
 
     private inner class Callback : MediaLibrarySession.Callback {
@@ -163,8 +177,8 @@ class PlaybackService : MediaLibraryService() {
             if (customCommand.customAction == CMD_HEART) {
                 val id = player.currentMediaItem?.mediaId?.toIntOrNull()
                 if (id != null) {
-                    io.submit {
-                        val row = g.library.track(id) ?: return@submit
+                    io.execute {
+                        val row = g.library.track(id) ?: return@execute
                         val level = g.library.cycleHeart(row, false)
                         handler.post { session.setMediaButtonPreferences(listOf(heartButton(level))) }
                     }
@@ -172,7 +186,7 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             if (customCommand.customAction == CMD_HEART_REFRESH) {
-                io.submit {
+                io.execute {
                     val level = currentHeartBlocking()
                     handler.post { session.setMediaButtonPreferences(listOf(heartButton(level))) }
                 }
@@ -216,7 +230,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<MediaItem>> = io.submit(Callable {
             val id = mediaId.toIntOrNull()
             val row = id?.let { g.library.track(it) }
-            if (row != null) LibraryResult.ofItem(item(row), null) else LibraryResult.ofError(SessionResult.RESULT_ERROR_BAD_VALUE)
+            if (row != null) LibraryResult.ofItem(item(row), null) else LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
         })
 
         override fun onGetChildren(

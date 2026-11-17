@@ -78,7 +78,10 @@ class Nas(private val context: Context, private val settings: Settings) {
                 errors += "$host: ${e.message}"
             }
         }
-        val msg = errors.joinToString("; ").ifEmpty { "Brak adresów NAS w ustawieniach" }
+        var msg = errors.joinToString("; ").ifEmpty { "Brak adresów NAS w ustawieniach" }
+        if (!io.github.senk39.droid39.core.Permissions.localNetworkGranted(context)) {
+            msg += ". " + io.github.senk39.droid39.core.Permissions.LOCAL_NETWORK_HINT
+        }
         lastFailAt = System.currentTimeMillis()
         _state.value = NasState.Offline(msg)
         throw RemoteUnavailable(msg)

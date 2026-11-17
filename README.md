@@ -54,7 +54,8 @@ Kolejność źródła przy odtwarzaniu: plik pobrany → kopia na karcie → NAS
 * Licznik odtworzeń po wysłuchaniu 50% (jak w 39player), Ostatnio dodane / odtwarzane, Ostatnio zatwierdzone.
 * Playlisty z PC + dodawanie utworów i tworzenie nowych playlist na telefonie.
 * Odtwarzanie w tle (Media3): powiadomienie, ekran blokady, słuchawki/Bluetooth, wznowienie po podłączeniu,
-  **Android Auto** (Do odsłuchania, Najlepsze, Polubione, Playlisty, Ostatnio dodane).
+  **Android Auto** (Do odsłuchania, Najlepsze, Polubione, Playlisty, Ostatnio dodane) i polecenia głosowe
+  („odtwórz DECO*27 w 39droid” – wykonawca vocaP, wokalista, album albo wyszukiwanie utworów).
 * **Simple Scrobbler 1.7.0**: sesja multimediów z metadanymi jak w tagach (wykonawca „X feat. Y” – scrobble łączą się
   z historią z 39player) oraz opcjonalny broadcast SLS API.
 
@@ -94,6 +95,11 @@ więc kolejne wersje instalują się jako aktualizacje.
 
 W aplikacji: **Ustawienia → NAS** (protokół, adresy, udział, foldery `MUZYKA` i `39sync`, użytkownik, hasło –
 szyfrowane kluczem z Android Keystore) → **Testuj połączenie** → **Synchronizuj teraz**.
+
+> **Android 17:** aplikacje z targetSdk 37 potrzebują zgody na dostęp do sieci lokalnej (`ACCESS_LOCAL_NETWORK`,
+> grupa „Urządzenia w pobliżu”) – bez niej połączenia z NAS w LAN kończą się przekroczeniem czasu. 39droid prosi
+> o nią przy starcie (gdy NAS jest skonfigurowany) i w Ustawieniach; odmowę można cofnąć w Ustawieniach systemu →
+> Aplikacje → 39droid → Uprawnienia → Urządzenia w pobliżu.
 
 ## Synchronizacja z 39player (PC) – `pc/sync39`
 
