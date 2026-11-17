@@ -74,14 +74,17 @@ class LocalFiles(private val context: Context, private val settings: Settings, p
         }
     }
 
+    /** Wolumin na pobrane: wybrany w ustawieniach, a „auto” – ten z największą ilością wolnego miejsca. */
     fun downloadVolume(): Volume {
         val vols = volumes()
         val want = settings.downloadVolume
         return vols.firstOrNull { it.id == want }
-            ?: vols.filter { it.removable }.maxByOrNull { it.free }
-            ?: vols.firstOrNull()
+            ?: vols.maxByOrNull { it.free }
             ?: Volume("primary", "Pamięć wewnętrzna", context.filesDir, false)
     }
+
+    /** Wolne miejsce, którego aplikacja nie zajmie nigdy (pobrane i pamięć podręczna). */
+    fun reserveBytes(): Long = RESERVE
 
     fun downloadRoot(): File = File(downloadVolume().dir, "Muzyka").apply { mkdirs() }
 
@@ -169,6 +172,8 @@ class LocalFiles(private val context: Context, private val settings: Settings, p
     }
 
     companion object {
+        const val RESERVE = 3L * 1024 * 1024 * 1024
+
         fun primaryMusicDir(): File = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
     }
 }

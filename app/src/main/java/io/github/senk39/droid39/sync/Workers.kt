@@ -76,9 +76,15 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         var failed = 0
         var bytes = 0L
         val music = g.settings.musicPath
+        val vol = g.files.downloadVolume()
         for (t in todo) {
             if (isStopped) break
             if (g.settings.wifiOnlyDownloads && g.nas.metered()) break
+            if (vol.free - t.size < g.files.reserveBytes()) {
+                // nigdy nie zapełniamy pamięci – zostaje rezerwa na system i inne aplikacje
+                runCatching { setForeground(foreground("Brak miejsca na ${vol.label} – pobieranie wstrzymane", done, todo.size)) }
+                break
+            }
             val pct = "${done + 1}/${todo.size} · ${Text.size(bytes)} z ${Text.size(plan.downloadBytes)}"
             runCatching { setForeground(foreground("$pct · ${t.title}", done, todo.size)) }
             setProgress(workDataOf("done" to done, "total" to todo.size, "title" to t.title))

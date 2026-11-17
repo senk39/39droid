@@ -3,6 +3,7 @@ package io.github.senk39.droid39
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -53,7 +54,11 @@ import io.github.senk39.droid39.ui.theme.Theme39
 @UnstableApi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        // aplikacja ma zawsze ciemny motyw – jasne ikony pasków systemowych niezależnie od trybu telefonu
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(0xE60D0F12.toInt()),
+        )
         super.onCreate(savedInstanceState)
         App.graph.player.connect()
         handleIntent(intent)

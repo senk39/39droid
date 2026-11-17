@@ -55,10 +55,17 @@ class Graph(val app: Application) {
     val offline = Offline(settings, library, files)
     val player by lazy { PlayerConnection(app) }
 
-    /** Pamięć podręczna strumieniowanych utworów (LRU) – na woluminie wybranym do pobierania (zwykle karta SD). */
+    /**
+     * Pamięć podręczna strumieniowanych utworów (LRU) – na woluminie z pobranymi utworami. Rozmiar z ustawień, ale
+     * najwyżej tyle, ile się zmieści (połowa wolnego miejsca ponad rezerwę), żeby nigdy nie zapełnić karty.
+     */
     val streamCache: SimpleCache by lazy {
-        val dir = File(files.downloadVolume().dir, "stream-cache")
-        SimpleCache(dir, LeastRecentlyUsedCacheEvictor(settings.cacheSizeMb.toLong() * 1024 * 1024), StandaloneDatabaseProvider(app))
+        val vol = files.downloadVolume()
+        val dir = File(vol.dir, "stream-cache")
+        val used = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        val room = ((vol.free + used - LocalFiles.RESERVE) / 2).coerceAtLeast(256L * 1024 * 1024)
+        val max = minOf(settings.cacheSizeMb.toLong() * 1024 * 1024, room)
+        SimpleCache(dir, LeastRecentlyUsedCacheEvictor(max), StandaloneDatabaseProvider(app))
     }
 
     fun start() {

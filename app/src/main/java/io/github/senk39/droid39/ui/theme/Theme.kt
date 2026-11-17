@@ -1,5 +1,6 @@
 package io.github.senk39.droid39.ui.theme
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -85,6 +86,9 @@ fun Theme39(accent: Color = C39.Miku, content: @Composable () -> Unit) {
         labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
     )
     CompositionLocalProvider(LocalAccent provides accent) {
-        MaterialTheme(colorScheme = scheme, typography = type, content = content)
+        MaterialTheme(colorScheme = scheme, typography = type) {
+            // domyślny kolor tekstu i ikon poza komponentami Surface (inaczej Text byłby czarny na ciemnym tle)
+            CompositionLocalProvider(LocalContentColor provides C39.Text, content = content)
+        }
     }
 }

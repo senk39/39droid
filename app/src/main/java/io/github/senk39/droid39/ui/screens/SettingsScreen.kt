@@ -190,7 +190,14 @@ fun SettingsScreen() {
                 Button39("Dodaj") {
                     if (newMirror.isNotBlank()) { s.mirrorFolders = (s.mirrorList() + newMirror.trim()).joinToString("\n"); newMirror = "" }
                 }
-                suggestions.take(2).forEach { sug -> Button39("+ $sug", outlined = true) { s.mirrorFolders = (s.mirrorList() + sug).joinToString("\n") } }
+            }
+            if (suggestions.isNotEmpty()) {
+                Text("Znalezione foldery z muzyką:", Modifier.padding(start = 16.dp, top = 8.dp), fontSize = 12.sp, color = C39.Text3)
+                suggestions.take(4).forEach { sug ->
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 3.dp)) {
+                        Button39("+ $sug", outlined = true) { s.mirrorFolders = (s.mirrorList() + sug).joinToString("\n") }
+                    }
+                }
             }
             var scanMsg by remember { mutableStateOf<String?>(null) }
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -220,6 +227,14 @@ fun SettingsScreen() {
                         Text("wolne ${T.size(v.free)} z ${T.size(v.total)}", fontSize = 12.sp, color = C39.Text3)
                     }
                 }
+            }
+            val chosenVol = vols.firstOrNull { it.id == chosen }
+            if (chosenVol != null && chosenVol.free < 10L * 1024 * 1024 * 1024) {
+                Text(
+                    "Na „${chosenVol.label}” zostało tylko ${T.size(chosenVol.free)} wolnego. Aplikacja zawsze zostawia " +
+                        "${T.size(g.files.reserveBytes())} rezerwy, więc pobierze niewiele – wybierz inny wolumin albo zwolnij miejsce.",
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = C39.Gold,
+                )
             }
             val dlBytes = remember(filesV) { g.files.downloadedBytes() }
             Hint("Pobrane: ${T.size(dlBytes)} · ${g.files.downloaded().size} plików. Pliki w folderze aplikacji są usuwane przy jej odinstalowaniu.")
@@ -273,7 +288,7 @@ fun SettingsScreen() {
 
             // ------------------------------------------------------------------ odtwarzanie i scrobbler
             SectionTitle("Odtwarzanie")
-            Toggle("Strumieniuj przez sieć komórkową", "Wyłączone – poza Wi-Fi grają tylko utwory na telefonie", s.allowMobileStreaming) { s.allowMobileStreaming = it }
+            Toggle("Strumieniuj przez sieć komórkową", "Po wyłączeniu poza Wi-Fi grają tylko utwory na telefonie", s.allowMobileStreaming) { s.allowMobileStreaming = it }
             Toggle("Kolor akcentu z okładki", "Jak w PowerAmp", s.accentFromArt) { s.accentFromArt = it }
 
             SectionTitle("Simple Scrobbler (Last.fm)")
