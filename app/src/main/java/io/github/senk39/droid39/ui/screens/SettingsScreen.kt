@@ -169,6 +169,13 @@ fun SettingsScreen() {
                     }
                 }
             }
+            val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) scope.launch { g.sync.importFromUri(uri) }
+            }
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                Button39("Wczytaj bibliotekę z pliku…", outlined = true) { importLauncher.launch(arrayOf("*/*")) }
+            }
+            Hint("Bez NAS: na PC python -m sync39 export --out D:\\39droid.db.gz, skopiuj plik na telefon i wybierz go tutaj.")
             Toggle("Synchronizuj automatycznie", "Przy starcie (w Wi-Fi) i co 6 godzin", s.autoSync) { s.autoSync = it }
             Field("Nazwa telefonu (widoczna na PC)", s.deviceName) { s.deviceName = it }
 

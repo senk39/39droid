@@ -23,8 +23,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +93,37 @@ fun HomeScreen() {
     val localCount = remember(filesV, snapV) { g.files.availableIds.size }
     val trackCount = remember(snapV) { lib.withSnap { it.trackCount } ?: 0 }
     val pending = rememberLoad(overlay, sync.running) { lib.pendingOps } ?: 0
+    val ready = remember(snapV) { lib.ready }
+    val settingsV by g.settings.changes.collectAsState()
+    val uiScope = rememberCoroutineScope()
+
+    // biblioteka z pliku (zanim NAS będzie gotowy) – plik .db.gz z `python -m sync39 export --out …`
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) g.scope.launch { g.sync.importFromUri(uri) }
+    }
+
+    // kopia biblioteki na karcie: propozycja folderu, zgoda na odczyt muzyki i skanowanie jednym przyciskiem
+    val mirrorSuggestion = remember(settingsV, snapV) {
+        if (!lib.ready || g.settings.mirrorList().isNotEmpty()) null
+        else g.files.suggestMirrors().let { s -> s.firstOrNull { !it.startsWith("/storage/emulated") } ?: s.firstOrNull() }
+    }
+    var mirrorMsg by remember { mutableStateOf<String?>(null) }
+    val scanMirrors = {
+        mirrorMsg = "Skanowanie karty…"
+        uiScope.launch {
+            mirrorMsg = withContext(Dispatchers.IO) {
+                g.files.scanMirrors().fold({ n ->
+                    g.files.recomputeAvailable(lib)
+                    "Znaleziono plików: $n · w bibliotece na telefonie: ${g.files.availableIds.size}"
+                }, { "Błąd: ${it.message}" })
+            }
+        }
+        Unit
+    }
+    val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) scanMirrors() else mirrorMsg = "Bez zgody na odczyt muzyki aplikacja nie widzi plików na karcie."
+    }
+
     Column(Modifier.fillMaxSize()) {
         TopBar("39droid", showBack = false, extra = {
             SmallIconButton(Icons39.Sync, "Synchronizuj", tint = if (sync.running) LocalAccent.current else C39.Text) {
@@ -94,17 +132,49 @@ fun HomeScreen() {
         })
         LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
             item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount) }
-            if (!lib.ready) {
+            if (!ready) {
                 item {
                     EmptyState(
-                        "Brak biblioteki", "Skonfiguruj NAS w Ustawieniach i uruchom na PC: python -m sync39 export. " +
-                            "Aplikacja pobierze migawkę biblioteki 39player.", Icons39.LibraryMusic,
+                        "Brak biblioteki",
+                        "Skonfiguruj NAS w Ustawieniach (na PC: python -m sync39 export) albo wczytaj plik biblioteki " +
+                            "skopiowany na telefon (na PC: python -m sync39 export --out …).", Icons39.LibraryMusic,
                     ) {
-                        Text("Otwórz ustawienia", Modifier.clip(RoundedCornerShape(50)).background(LocalAccent.current)
-                            .clickable { Nav.go(Route.Settings) }.padding(horizontal = 18.dp, vertical = 9.dp), color = Color(0xFF00201D))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HomeButton("Otwórz ustawienia", filled = true) { Nav.go(Route.Settings) }
+                            HomeButton("Wczytaj z pliku", filled = false) { importLauncher.launch(arrayOf("*/*")) }
+                        }
                     }
                 }
                 return@LazyColumn
+            }
+            if (mirrorSuggestion != null || mirrorMsg != null) {
+                item {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
+                            .background(C39.Surface).padding(14.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons39.SdCard, null, Modifier.size(20.dp), tint = LocalAccent.current)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Kopia biblioteki na karcie", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        }
+                        val msg = mirrorMsg
+                        if (msg == null && mirrorSuggestion != null) {
+                            Text(
+                                "Znaleziono folder z muzyką: $mirrorSuggestion. Utwory z niego grają bez sieci i nie są pobierane drugi raz.",
+                                color = C39.Text2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                            HomeButton("Użyj i skanuj", filled = true) {
+                                g.settings.mirrorFolders = mirrorSuggestion
+                                if (g.files.hasAudioPermission()) scanMirrors()
+                                else audioLauncher.launch(android.Manifest.permission.READ_MEDIA_AUDIO)
+                            }
+                        } else if (msg != null) {
+                            Text(msg, color = C39.Text2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
+                            if (msg != "Skanowanie karty…") HomeButton("OK", filled = false) { mirrorMsg = null }
+                        }
+                    }
+                }
             }
             item { SectionTitle("Słuchanie") }
             item { IconTextRow(Icons39.Inbox, "Do odsłuchania", "Nowe utwory do oceny", C39.Gold, counts?.get("unl")?.toString()) { Nav.go(Route.Special("unl")) } }
@@ -128,6 +198,16 @@ fun HomeScreen() {
             item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } }
         }
     }
+}
+
+@Composable
+private fun HomeButton(label: String, filled: Boolean, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    Text(
+        label, Modifier.clip(RoundedCornerShape(50)).background(if (filled) accent else C39.Surface2)
+            .clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
+        color = if (filled) Color(0xFF00201D) else C39.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+    )
 }
 
 private fun colorFor(kind: String) = when (kind) {

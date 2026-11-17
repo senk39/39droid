@@ -2,6 +2,7 @@
 
     python -m sync39 export [--no-art] [--art-limit N]   migawka biblioteki i okładki → NAS (bezpieczne w trakcie
                                                            pracy 39player – działa na kopii bazy)
+    python -m sync39 export --out D:\\39droid.db.gz        sam plik biblioteki do skopiowania na telefon (bez NAS)
     python -m sync39 import [--dry-run] [--force]         zmiany z telefonu → 39player (39player musi być zamknięty)
     python -m sync39 run                                  import → uruchom 39player → po zamknięciu export
     python -m sync39 status                               stan folderu synchronizacji
@@ -36,7 +37,40 @@ def _atomic_write(path: str, data: bytes) -> None:
     os.replace(tmp, path)
 
 
+def export_to_file(cfg, out: str) -> int:
+    """Sam plik biblioteki (.db.gz) do skopiowania na telefon – bez NAS (39droid: Wczytaj bibliotekę z pliku)."""
+    pdir = cfg["player39_dir"]
+    if os.path.isdir(out):
+        out = os.path.join(out, f"39droid-biblioteka-{time.strftime('%Y%m%d-%H%M')}.db.gz")
+    elif not out.lower().endswith(".gz"):
+        out += ".gz"
+    sync_dir = (cfg.get("sync_dir") or "").strip()
+    applied = inbox.load_applied(sync_dir) if sync_dir and os.path.isdir(sync_dir) else {}
+    log(f"Eksport biblioteki 39player → {out}")
+    data = p39.copy_data(pdir)
+    lib = None
+    work = tempfile.mkdtemp(prefix="sync39-out-")
+    try:
+        lib, pcfg = p39.load_library(pdir, data)
+        db = os.path.join(work, "library.db")
+        snapshot.build(lib, pcfg, db, applied, log)
+        tmp = out + ".tmp"
+        with open(db, "rb") as src, gzip.open(tmp, "wb", compresslevel=6) as dst:
+            shutil.copyfileobj(src, dst, 1 << 20)
+        os.replace(tmp, out)
+        log(f"  zapisano {out} ({os.path.getsize(out) / 1e6:.1f} MB) – skopiuj go na telefon i w 39droid wybierz "
+            f"„Wczytaj z pliku”")
+    finally:
+        if lib is not None:
+            lib.con.close()
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(data, ignore_errors=True)
+    return 0
+
+
 def cmd_export(cfg, args) -> int:
+    if args.out:
+        return export_to_file(cfg, args.out)
     sync_dir = settings.require_sync_dir(cfg)
     pdir = cfg["player39_dir"]
     t0 = time.time()
@@ -180,6 +214,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("export", help="migawka biblioteki i okładki → NAS")
     e.add_argument("--no-art", action="store_true", help="bez miniatur okładek")
+    e.add_argument("--out", help="zapisz tylko plik biblioteki (.db.gz) do podanej ścieżki lub folderu – bez NAS")
     e.add_argument("--refresh-art", action="store_true", help="przelicz wszystkie miniatury")
     e.add_argument("--art-limit", type=int, default=None, help="najwyżej tyle nowych miniatur (test)")
     i = sub.add_parser("import", help="zmiany z telefonu → 39player")

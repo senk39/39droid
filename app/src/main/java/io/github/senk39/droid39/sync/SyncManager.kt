@@ -82,6 +82,46 @@ class SyncManager(
         }
     }
 
+    /**
+     * Migawka biblioteki z pliku (np. skopiowanego przez USB: `python -m sync39 export --out …`) – gdy NAS nie jest
+     * jeszcze skonfigurowany albo jest niedostępny. Przyjmuje plik .db.gz (jak na NAS) albo rozpakowany .db.
+     */
+    suspend fun importFromUri(uri: android.net.Uri): Result<String> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            _status.value = SyncStatus(true, "Wczytywanie biblioteki z pliku…")
+            val dir = File(context.filesDir, "snapshot").apply { mkdirs() }
+            val fresh = File(dir, "incoming.db")
+            try {
+                val raw = context.contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("Nie można otworzyć pliku")
+                java.io.BufferedInputStream(raw, 1 shl 16).use { input ->
+                    input.mark(4)
+                    val gz = input.read() == 0x1f && input.read() == 0x8b
+                    input.reset()
+                    val stream = if (gz) GZIPInputStream(input, 1 shl 16) else input
+                    fresh.outputStream().use { stream.copyTo(it, 1 shl 16) }
+                }
+                library.install(fresh)                      // sprawdza format; zły plik – wyjątek z opisem
+                settings.snapshotSha = ""                   // następna synchronizacja z NAS podmieni ją na aktualną
+                settings.snapshotCreated = ((library.withSnap { it.createdAt } ?: 0.0) * 1000).toLong()
+                files.recomputeAvailable(library)
+                val n = library.withSnap { it.trackCount } ?: 0
+                val msg = "Wczytano bibliotekę z pliku: $n utworów"
+                _status.value = SyncStatus(false, msg)
+                onSnapshotInstalled?.invoke()
+                Result.success(msg)
+            } catch (e: Exception) {
+                fresh.delete()
+                val msg = when {
+                    e is android.database.sqlite.SQLiteException -> "To nie jest plik biblioteki 39droid (library-….db.gz)"
+                    else -> e.message ?: e.javaClass.simpleName
+                }
+                _status.value = SyncStatus(false, "", error = msg)
+                Result.failure(e)
+            }
+        }
+    }
+
     /** Wysłanie dziennika z opóźnieniem (zbiera kilka szybkich zmian w jeden plik). */
     fun schedulePush(delayMs: Long = 20_000) {
         pushJob?.cancel()

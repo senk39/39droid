@@ -73,6 +73,20 @@ Opcjach programisty): `adb install -r app/build/outputs/apk/release/app-release.
 i otwórz go (zezwól na instalację z tego źródła). Wersja release jest podpisana kluczem debug tego komputera,
 więc kolejne wersje instalują się jako aktualizacje.
 
+## Na start bez NAS – biblioteka z pliku
+
+Zanim NAS będzie gotowy, aplikacja działa z samą kopią biblioteki na karcie SD:
+
+1. Na PC (folder `pc`): `python -m sync39 export --out D:\39droid.db.gz` – zapisuje sam plik biblioteki
+   (ok. 12 MB), także przy włączonym 39player.
+2. Skopiuj plik na telefon (np. kablem do folderu Pobrane).
+3. W 39droid: **Wczytaj z pliku** na ekranie głównym (albo Ustawienia → Wczytaj bibliotekę z pliku…).
+4. Karta **Kopia biblioteki na karcie** proponuje folder z muzyką (np. `/storage/0123-4567/Music`) –
+   **Użyj i skanuj**, zezwól na odczyt muzyki. Utwory z karty grają od razu, bez sieci.
+
+Zmiany z telefonu (serduszka, odsłuchy, playlisty) czekają w aplikacji i trafią na PC przy pierwszej synchronizacji
+z NAS. Gdy NAS zacznie działać, migawka z NAS zastąpi wczytany plik.
+
 ## Konfiguracja NAS (Ugreen DXP4800 Plus, UGOS Pro)
 
 1. **Udział na muzykę**, np. `Muzyka`, a w nim folder `MUZYKA` – kopia `F:\MUZYKA` (ta sama struktura folderów).
@@ -109,6 +123,7 @@ Pythonem z PyQt6 i mutagen – tym samym, który uruchamia 39player):
 
 | Polecenie | Co robi |
 |---|---|
+| `python -m sync39 export --out PLIK` | sam plik biblioteki (.db.gz) do skopiowania na telefon – bez NAS. |
 | `python -m sync39 export` | migawka biblioteki + miniatury okładek → NAS. Działa na kopii bazy, więc można go uruchomić także przy włączonym 39player. Pierwszy eksport okładek (~7 tys. albumów) trwa kilka minut, kolejne tylko nowe. |
 | `python -m sync39 import` | zmiany z telefonu → 39player (serduszka trafiają do `_REKOMENDACJE Z PC` / `_NAJLEPSZE` jak kliknięcia w programie; odtworzenia, oznaczenia „Do odsłuchania”, playlisty). **39player musi być zamknięty.** `--dry-run` pokazuje, co zostałoby zastosowane. |
 | `python -m sync39 run` | import → uruchom 39player → po zamknięciu export. To samo robi dwuklik na **`pc/39player+sync.pyw`** (bez okna konsoli, dziennik w `pc/sync39.log`) – wygodne jako skrót zamiast `39player.lnk`. |
