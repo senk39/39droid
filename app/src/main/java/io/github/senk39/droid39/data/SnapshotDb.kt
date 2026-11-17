@@ -190,6 +190,15 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
         return query(where, tokens.toTypedArray(), "t.sort_title", limit)
     }
 
+    /** Ścieżki utworów z daną okładką (do wyciągnięcia jej z pliku na telefonie). */
+    fun relsForArt(artKey: String, limit: Int = 8): List<String> {
+        val out = ArrayList<String>()
+        db.rawQuery("SELECT rel FROM track WHERE art = ? LIMIT $limit", arrayOf(artKey)).use { c ->
+            while (c.moveToNext()) out += c.getString(0)
+        }
+        return out
+    }
+
     fun allIdsWithSize(): List<Triple<Int, String, Long>> {
         val out = ArrayList<Triple<Int, String, Long>>()
         db.rawQuery("SELECT id, rel, COALESCE(size,0) FROM track", null).use { c ->

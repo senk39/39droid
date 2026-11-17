@@ -38,6 +38,16 @@ class ArtLoader(
     private val missing = ConcurrentHashMap<String, Long>()
     private val net = Semaphore(4)
 
+    /** Ścieżki utworów z daną okładką – dla kategorii i półek (bez ścieżki), gdy NAS jest niedostępny. */
+    var relsFor: ((String) -> List<String>)? = null
+
+    private fun extractAny(key: String, rel: String?): Boolean {
+        if (extractLocal(key, rel)) return true
+        if (rel != null) return false
+        val rels = relsFor?.invoke(key) ?: return false
+        return rels.any { files.find(it) != null && extractLocal(key, it) }
+    }
+
     fun file(key: String) = File(dir, "${key.take(2)}/$key.jpg")
 
     private fun memKey(key: String, px: Int) = "$key@${if (px <= 200) "s" else "l"}"
@@ -52,7 +62,7 @@ class ArtLoader(
             if (!f.exists()) {
                 val miss = missing[key]
                 if (miss != null && System.currentTimeMillis() - miss < 10 * 60_000) return@withContext null
-                if (!fetchRemote(key) && !extractLocal(key, rel)) {
+                if (!fetchRemote(key) && !extractAny(key, rel)) {
                     missing[key] = System.currentTimeMillis()
                     return@withContext null
                 }
@@ -98,13 +108,13 @@ class ArtLoader(
     fun ensureFile(key: String?, rel: String?): File? {
         if (key == null) return null
         val f = file(key)
-        if (f.exists() || fetchRemote(key) || extractLocal(key, rel)) return f.takeIf { it.exists() }
+        if (f.exists() || fetchRemote(key) || extractAny(key, rel)) return f.takeIf { it.exists() }
         return null
     }
 
     suspend fun prefetch(key: String?, rel: String?) {
         if (key == null || file(key).exists()) return
-        withContext(Dispatchers.IO) { if (!fetchRemote(key)) extractLocal(key, rel) }
+        withContext(Dispatchers.IO) { if (!fetchRemote(key)) extractAny(key, rel) }
     }
 
     private fun decode(f: File, px: Int): Bitmap? = runCatching {

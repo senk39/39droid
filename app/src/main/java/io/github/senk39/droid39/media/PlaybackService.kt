@@ -278,7 +278,8 @@ class PlaybackService : MediaLibraryService() {
         CommandButton.Builder(if (level > 0) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED)
             .setDisplayName(when (level) { 2 -> "Najlepsze ♥♥"; 1 -> "Polubione ♥"; else -> "Polub" })
             .setSessionCommand(SessionCommand(CMD_HEART, Bundle.EMPTY))
-            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
+            // SLOT_OVERFLOW: jedyne miejsce, które Media3 eksportuje do powiadomienia i sesji systemowej
+            .setSlots(CommandButton.SLOT_OVERFLOW)
             .build()
 
     // ---------------------------------------------------------------- zdarzenia odtwarzacza

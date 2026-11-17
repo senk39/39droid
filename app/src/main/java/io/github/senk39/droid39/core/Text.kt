@@ -26,8 +26,12 @@ object Text {
         sortKey(q.trim()).split(Regex("\\s+")).filter { it.isNotEmpty() && it != "￿" }
 
     /** Klucz ścieżki względnej: NFC i małe litery (porównanie plików z karty, pobranych i z NAS). */
-    fun relKey(rel: String): String =
-        Normalizer.normalize(rel.replace('\\', '/'), Normalizer.Form.NFC).lowercase(Locale.ROOT)
+    fun relKey(rel: String): String {
+        val s = rel.replace('\\', '/')
+        // ścieżki z migawki są już w NFC – normalizacja (kosztowna dla 63 tys. ścieżek) tylko w razie potrzeby
+        val n = if (Normalizer.isNormalized(s, Normalizer.Form.NFC)) s else Normalizer.normalize(s, Normalizer.Form.NFC)
+        return n.lowercase(Locale.ROOT)
+    }
 
     fun nfc(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFC)
 

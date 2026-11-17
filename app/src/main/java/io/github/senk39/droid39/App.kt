@@ -70,6 +70,7 @@ class Graph(val app: Application) {
 
     fun start() {
         library.onLocalChange = { sync.schedulePush() }
+        art.relsFor = { key -> library.withSnap { it.relsForArt(key) } ?: emptyList() }
         sync.onSnapshotInstalled = {
             if (settings.autoDownload && hasOfflineRules()) Jobs.startDownloads(app, settings.wifiOnlyDownloads)
         }

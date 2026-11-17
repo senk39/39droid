@@ -31,6 +31,7 @@ CREATE TABLE track(
 );
 CREATE INDEX track_album ON track(album_key);
 CREATE INDEX track_added ON track(date_added);
+CREATE INDEX track_art ON track(art);
 CREATE TABLE vdb(
     track_id INTEGER PRIMARY KEY, song_id INTEGER, album_id INTEGER, song_type TEXT,
     name_ja TEXT, name_romaji TEXT, name_en TEXT, album_ja TEXT, album_romaji TEXT, album_en TEXT,

@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +82,10 @@ fun HomeScreen() {
         )
     }
     val roots = rememberLoad(snapV) { lib.roots() } ?: emptyList()
+    // wartości spoza stanu Compose odczytywane tu, przy zmianie wersji – elementy listy dostają je jako parametry
+    val localCount = remember(filesV, snapV) { g.files.availableIds.size }
+    val trackCount = remember(snapV) { lib.withSnap { it.trackCount } ?: 0 }
+    val pending = rememberLoad(overlay, sync.running) { lib.pendingOps } ?: 0
     Column(Modifier.fillMaxSize()) {
         TopBar("39droid", showBack = false, extra = {
             SmallIconButton(Icons39.Sync, "Synchronizuj", tint = if (sync.running) LocalAccent.current else C39.Text) {
@@ -88,7 +93,7 @@ fun HomeScreen() {
             }
         })
         LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
-            item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, lib.pendingOps, filesV) }
+            item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount) }
             if (!lib.ready) {
                 item {
                     EmptyState(
@@ -107,7 +112,7 @@ fun HomeScreen() {
             item { IconTextRow(Icons39.HeartOutline, "Polubione utwory", "♥ – z PC i telefonu", C39.Pink, counts?.get("liked")?.toString()) { Nav.go(Route.Special("liked")) } }
             item { IconTextRow(Icons39.NewRelease, "Ostatnio dodane", null, LocalAccent.current) { Nav.go(Route.Special("recent")) } }
             item { IconTextRow(Icons39.History, "Ostatnio odtwarzane", null, LocalAccent.current) { Nav.go(Route.Special("played")) } }
-            item { IconTextRow(Icons39.DownloadDone, "Na telefonie", "Pobrane i z karty SD – bez sieci", C39.Green, g.files.availableIds.size.toString()) { Nav.go(Route.Special("offline")) } }
+            item { IconTextRow(Icons39.DownloadDone, "Na telefonie", "Pobrane i z karty SD – bez sieci", C39.Green, localCount.toString()) { Nav.go(Route.Special("offline")) } }
             item { IconTextRow(Icons39.Queue, "Kolejka odtwarzania", null, LocalAccent.current) { Nav.go(Route.Queue) } }
             item { SectionTitle("Kategorie") }
             roots.forEach { n ->
@@ -120,7 +125,7 @@ fun HomeScreen() {
             item { IconTextRow(Icons39.Tag, "Tagi (VocaDB)", null, C39.Miku, counts?.get("tags")?.toString()) { Nav.go(Route.Tags) } }
             item { IconTextRow(Icons39.Star, "Ulubione (gwiazdki)", "Tagi, vocaP i albumy z 39player", C39.Gold) { Nav.go(Route.Stars) } }
             item { IconTextRow(Icons39.CheckCircle, "Ostatnio zatwierdzone", "Historia z listy Nie przesłuchane", C39.Green) { Nav.go(Route.Commits) } }
-            item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, lib.withSnap { it.trackCount }?.toString()) { Nav.go(Route.Special("all")) } }
+            item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } }
         }
     }
 }
@@ -133,7 +138,7 @@ private fun colorFor(kind: String) = when (kind) {
 }
 
 @Composable
-private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, filesV: Int) {
+private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int) {
     val g = App.graph
     val accent = LocalAccent.current
     val (icon, color, text) = when (nas) {
@@ -155,7 +160,7 @@ private fun StatusCard(nas: NasState, running: Boolean, message: String, progres
         val lines = buildList {
             if (snapAt > 0) add("Biblioteka z PC: " + java.text.SimpleDateFormat("d.MM.yyyy HH:mm", java.util.Locale.ROOT).format(java.util.Date(snapAt)))
             if (pending > 0) add("Zmiany czekające na wysłanie: $pending")
-            if (g.files.availableIds.isNotEmpty()) add("Na telefonie: ${T.tracks(g.files.availableIds.size)}")
+            if (localCount > 0) add("Na telefonie: ${T.tracks(localCount)}")
         }
         if (lines.isNotEmpty()) Text(lines.joinToString(" · "), color = C39.Text3, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         if (running) {
