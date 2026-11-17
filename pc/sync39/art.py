@@ -50,7 +50,7 @@ def _thumb(data: bytes, size: int, quality: int) -> bytes:
     return out.getvalue()
 
 
-def export(lib, sync_dir: str, arts: dict, size: int = 360, quality: int = 84, refresh: bool = False,
+def export(lib, sync_dir: str, arts: dict, size: int = 512, quality: int = 82, refresh: bool = False,
            limit: int | None = None, log=print) -> dict:
     """Tworzy brakujące miniatury. `arts` – {klucz: (folder albumu, [id utworów])} z snapshot.build.
     Zwraca statystykę."""

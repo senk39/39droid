@@ -15,8 +15,8 @@ DEFAULTS = {
     # kopia biblioteki muzyki na NAS (cel polecenia „music”), np. \\DXP4800PLUS\Muzyka\MUZYKA
     "music_dir": "",
     # miniatury okładek: bok w pikselach i jakość JPEG
-    "art_size": 360,
-    "art_quality": 84,
+    "art_size": 512,
+    "art_quality": 82,
     # ile ostatnich migawek zostawić w folderze snapshot/
     "keep_snapshots": 2,
     # jak uruchomić 39player w poleceniu „run” (puste – 39player.pyw albo exe\39player.exe z folderu projektu)

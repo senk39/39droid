@@ -62,11 +62,20 @@ fun <T> rememberLoad(vararg keys: Any?, load: suspend () -> T): T? {
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-fun Art(artKey: String?, rel: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = 6.dp, iconFallback: ImageVector = Icons39.Note) {
+fun Art(
+    artKey: String?, rel: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = 6.dp,
+    iconFallback: ImageVector = Icons39.Note, large: Boolean = false,
+) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     val art = App.graph.art
-    val bmp by produceState(initialValue = art.peek(artKey, px), artKey, px) {
-        if (value == null) value = art.load(artKey, rel, px)
+    val bmp by produceState(initialValue = art.peek(artKey, px), artKey, rel, px, large) {
+        if (large) {
+            // najpierw miniatura (od razu), potem pełna rozdzielczość z pliku na telefonie
+            if (value == null) value = art.load(artKey, rel, px)
+            art.loadLarge(artKey, rel, px)?.let { value = it }
+        } else if (value == null) {
+            value = art.load(artKey, rel, px)
+        }
     }
     Box(
         modifier.size(size).clip(RoundedCornerShape(corner)).background(

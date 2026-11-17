@@ -76,8 +76,8 @@ def cmd_export(cfg, args) -> int:
                 except OSError:
                     pass
             if not args.no_art:
-                art.export(lib, sync_dir, stats["arts"], int(cfg.get("art_size", 360)),
-                           int(cfg.get("art_quality", 84)), args.refresh_art, args.art_limit, log)
+                art.export(lib, sync_dir, stats["arts"], int(cfg.get("art_size", 512)),
+                           int(cfg.get("art_quality", 82)), args.refresh_art, args.art_limit, log)
         finally:
             shutil.rmtree(work, ignore_errors=True)
     finally:

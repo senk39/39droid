@@ -175,7 +175,7 @@ fun PlayerScreen() {
                             ) { _, d -> total += d }
                         },
                 ) {
-                    Art(row.artKey, row.rel, 360.dp, Modifier.fillMaxSize(), corner = 16.dp)
+                    Art(row.artKey, row.rel, 360.dp, Modifier.fillMaxSize(), corner = 16.dp, large = true)
                 }
             } else Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(C39.Surface2))
             Spacer(Modifier.weight(0.5f))

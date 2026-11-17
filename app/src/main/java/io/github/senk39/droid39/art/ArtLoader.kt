@@ -61,6 +61,39 @@ class ArtLoader(
         }
     }
 
+    /**
+     * Duża okładka do odtwarzacza: z pliku na telefonie w pełnej rozdzielczości (jak w PowerAmp),
+     * a dla utworów strumieniowanych – miniatura.
+     */
+    suspend fun loadLarge(key: String?, rel: String?, px: Int): Bitmap? {
+        if (rel != null) {
+            val mk = "L:$rel"
+            mem.get(mk)?.let { return it }
+            val big = withContext(Dispatchers.IO) {
+                val lf = files.resolve(rel) ?: return@withContext null
+                runCatching {
+                    val mmr = MediaMetadataRetriever()
+                    try {
+                        if (lf.path.startsWith("content://")) mmr.setDataSource(context, Uri.parse(lf.path)) else mmr.setDataSource(lf.path)
+                        val pic = mmr.embeddedPicture ?: return@runCatching null
+                        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(pic, 0, pic.size, o)
+                        var sample = 1
+                        while (o.outWidth / (sample * 2) >= px && o.outHeight / (sample * 2) >= px) sample *= 2
+                        BitmapFactory.decodeByteArray(pic, 0, pic.size, BitmapFactory.Options().apply { inSampleSize = sample })
+                    } finally {
+                        mmr.release()
+                    }
+                }.getOrNull()
+            }
+            if (big != null) {
+                mem.put(mk, big)
+                return big
+            }
+        }
+        return load(key, rel, px)
+    }
+
     /** Ścieżka pliku miniatury (pobiera ją w razie potrzeby) – np. dla powiadomienia odtwarzacza. */
     fun ensureFile(key: String?, rel: String?): File? {
         if (key == null) return null
@@ -104,7 +137,7 @@ class ArtLoader(
                 if (lf.path.startsWith("content://")) mmr.setDataSource(context, Uri.parse(lf.path)) else mmr.setDataSource(lf.path)
                 val pic = mmr.embeddedPicture ?: return@runCatching false
                 val bmp = BitmapFactory.decodeByteArray(pic, 0, pic.size) ?: return@runCatching false
-                val scaled = scaleDown(bmp, 360)
+                val scaled = scaleDown(bmp, 512)
                 val out = ByteArrayOutputStream()
                 scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
                 save(key, out.toByteArray())
