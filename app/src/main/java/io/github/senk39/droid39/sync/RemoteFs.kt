@@ -13,6 +13,9 @@ interface RemoteFs : Closeable {
     /** Opis połączenia do wyświetlenia, np. „smb://192.168.1.20/Muzyka”. */
     val label: String
 
+    /** Sprawdza połączenie i logowanie (wyjątek z opisem, gdy się nie udało). */
+    fun ping()
+
     fun exists(path: String): Boolean
     fun size(path: String): Long?
     fun read(path: String): ByteArray

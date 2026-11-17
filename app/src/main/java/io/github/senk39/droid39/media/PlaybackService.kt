@@ -151,7 +151,7 @@ class PlaybackService : MediaLibraryService() {
                 .add(SessionCommand(CMD_HEART, Bundle.EMPTY))
                 .add(SessionCommand(CMD_HEART_REFRESH, Bundle.EMPTY))
                 .build()
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(cmds)
                 .setMediaButtonPreferences(listOf(heartButton(currentHeart())))
                 .build()
@@ -415,7 +415,7 @@ class PlaybackService : MediaLibraryService() {
         Uri.Builder().scheme("d39art").authority("a").appendPath(key).appendQueryParameter("rel", rel).build()
 
     private inner class ArtBitmapLoader : BitmapLoader {
-        private val fallback = DataSourceBitmapLoader(this@PlaybackService)
+        private val fallback = DataSourceBitmapLoader.Builder(this@PlaybackService).setMaximumOutputDimension(1024).build()
         override fun supportsMimeType(mimeType: String) = fallback.supportsMimeType(mimeType)
         override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> = fallback.decodeBitmap(data)
         override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {

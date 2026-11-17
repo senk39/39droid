@@ -52,6 +52,17 @@ class WebDavFs(
 
     private fun call(req: Request) = client.newCall(req).execute()
 
+    override fun ping() {
+        val req = Request.Builder().url("$base/").method("PROPFIND", ByteArray(0).toRequestBody(null)).header("Depth", "0").build()
+        call(req).use { r ->
+            when {
+                r.code == 401 || r.code == 403 -> throw RemoteUnavailable("WebDAV: błędny użytkownik lub hasło (${r.code})")
+                r.code == 404 -> throw RemoteUnavailable("WebDAV: nie ma ścieżki $label")
+                r.code >= 500 -> throw IOException("WebDAV: błąd serwera ${r.code}")
+            }
+        }
+    }
+
     override fun exists(path: String): Boolean = size(path) != null
 
     override fun size(path: String): Long? {

@@ -17,6 +17,7 @@ import io.github.senk39.droid39.files.LocalFiles
 import io.github.senk39.droid39.sync.Nas
 import io.github.senk39.droid39.sync.RemoteFs
 import java.io.File
+import java.io.IOException
 
 /**
  * Źródło danych utworu „d39://t/<id>?rel=…&size=…”: najpierw plik lokalny (pobrany albo kopia na karcie),
@@ -59,18 +60,30 @@ class RoutingDataSource(
             throw DataSourceException("Strumieniowanie przez sieć komórkową jest wyłączone (Ustawienia)",
                 null, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         }
-        val fs = try {
-            nas.get()
-        } catch (e: Exception) {
-            throw DataSourceException(e.message ?: "Brak połączenia z NAS", e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+        // dwie próby: zerwane połączenie (np. NAS rozłączył bezczynną sesję SMB) jest odnawiane
+        for (attempt in 0..1) {
+            val fs = try {
+                nas.get()
+            } catch (e: Exception) {
+                throw DataSourceException(e.message ?: "Brak połączenia z NAS", e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+            }
+            val remote = fs.uriFor(RemoteFs.join(settings.musicPath, rel))
+            val upstream = CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(fs.dataSourceFactory())
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .createDataSource()
+            try {
+                return use(upstream, dataSpec.buildUpon().setUri(remote).setKey("t$id-$size").build())
+            } catch (e: IOException) {
+                delegate = null
+                runCatching { upstream.close() }
+                val notFound = e is DataSourceException && e.reason == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+                if (attempt == 1 || notFound) throw e
+                nas.invalidate()
+            }
         }
-        val remote = fs.uriFor(RemoteFs.join(settings.musicPath, rel))
-        val upstream = CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(fs.dataSourceFactory())
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            .createDataSource()
-        return use(upstream, dataSpec.buildUpon().setUri(remote).setKey("t$id-$size").build())
+        throw DataSourceException(PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
     }
 
     private fun use(ds: DataSource, spec: DataSpec): Long {

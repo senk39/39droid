@@ -55,6 +55,11 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    lint {
+        // API Media3 oznaczone @UnstableApi są tu używane świadomie (źródła danych, sesja)
+        disable += setOf("UnsafeOptInUsageError")
+    }
 }
 
 dependencies {

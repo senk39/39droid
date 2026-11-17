@@ -221,7 +221,9 @@ class Library(context: Context, private val settings: Settings, val local: Local
                     folder, "local", false, 0, 0)
             }
         }
-        return out.map { if (it.kind == "dir") it else it.copy(count = playlistTrackIds(it.rel).size) }
+        // liczba utworów przeliczana tylko dla playlist zmienionych na telefonie
+        val touched = plOps.mapNotNullTo(HashSet()) { it.playlist?.lowercase() }
+        return out.map { if (it.kind == "dir" || it.rel.lowercase() !in touched) it else it.copy(count = playlistTrackIds(it.rel).size) }
     }
 
     fun playlistByKind(kind: String): PlaylistRow? = withSnap { s -> s.playlists.firstOrNull { it.kind == kind } }
@@ -313,6 +315,12 @@ class Library(context: Context, private val settings: Settings, val local: Local
     }
 
     fun allTracks(): List<TrackRow> = withSnap { it.query("", emptyArray(), "t.rel") } ?: emptyList()
+
+    /** Utwory albumu (klucz: folder albumu względem folderu muzyki, małymi literami). */
+    fun albumTracks(albumKey: String): List<TrackRow> =
+        withSnap { it.query("t.album_key = ?", arrayOf(albumKey), "t.disc_no, t.track_no, t.rel") } ?: emptyList()
+
+    fun localTracks(ids: Set<Int>): List<TrackRow> = withSnap { s -> s.tracksByIds(ids.toList()).sortedBy { it.rel } } ?: emptyList()
 
     fun search(q: String, limit: Int = 400): List<TrackRow> = withSnap { it.search(Text.queryTokens(q), limit) } ?: emptyList()
 

@@ -79,6 +79,10 @@ class SmbFs(
         }
     }
 
+    override fun ping() {
+        share()
+    }
+
     private fun smb(path: String) = path.trim('/').replace('/', '\\')
 
     fun openRead(path: String): SmbFile = try {

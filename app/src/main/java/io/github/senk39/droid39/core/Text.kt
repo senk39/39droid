@@ -7,7 +7,8 @@ import java.util.Locale
 object Text {
     fun sortKey(s: String?): String {
         if (s.isNullOrEmpty()) return "￿"
-        val lower = s.lowercase(Locale.ROOT).replace('ł', 'l')
+        // jak str.casefold() w Pythonie dla znaków spotykanych w bibliotece (ß → ss, ς → σ)
+        val lower = s.lowercase(Locale.ROOT).replace('ł', 'l').replace("ß", "ss").replace('ς', 'σ')
         val nfkd = Normalizer.normalize(lower, Normalizer.Form.NFKD)
         val sb = StringBuilder(nfkd.length)
         for (ch in nfkd) {

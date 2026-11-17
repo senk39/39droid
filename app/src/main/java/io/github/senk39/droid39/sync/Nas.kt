@@ -68,7 +68,7 @@ class Nas(private val context: Context, private val settings: Settings) {
             }
             val candidate = create(host)
             try {
-                candidate.exists(settings.syncPath.ifBlank { "39sync" })
+                candidate.ping()
                 fs = candidate
                 fsKey = k
                 _state.value = NasState.Online(candidate.label)
@@ -96,13 +96,16 @@ class Nas(private val context: Context, private val settings: Settings) {
         fs = null
     }
 
-    /** Operacja z jednym ponowieniem po zerwanym połączeniu. */
+    /** Operacja z jednym ponowieniem po zerwanym połączeniu (np. NAS rozłączył bezczynną sesję SMB). */
     fun <T> use(block: (RemoteFs) -> T): T {
         val first = get()
         return try {
             block(first)
-        } catch (e: IOException) {
-            if (e is java.io.FileNotFoundException) throw e
+        } catch (e: java.io.FileNotFoundException) {
+            throw e
+        } catch (e: RemoteUnavailable) {
+            throw e
+        } catch (e: Exception) {
             invalidate()
             block(get())
         }

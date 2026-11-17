@@ -37,12 +37,18 @@ data class PlayerUi(
     val error: String? = null,
 )
 
+/** Odtwarzany utwór (bez pozycji) – dla list, które nie muszą odświeżać się co pół sekundy. */
+data class NowPlaying(val id: Int? = null, val playing: Boolean = false)
+
 /** Połączenie interfejsu z usługą odtwarzania (MediaController) i stan do wyświetlenia. */
 @UnstableApi
 class PlayerConnection(private val context: Context) {
     private var controller: MediaController? = null
     private val _ui = MutableStateFlow(PlayerUi())
     val ui: StateFlow<PlayerUi> = _ui
+    private val _now = MutableStateFlow(NowPlaying())
+    val now: StateFlow<NowPlaying> = _now
+    private var queueCache: List<Int> = emptyList()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var poll: Job? = null
     private val pending = ArrayList<(MediaController) -> Unit>()
@@ -79,17 +85,23 @@ class PlayerConnection(private val context: Context) {
     }
 
     private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = refresh()
+        override fun onEvents(player: Player, events: Player.Events) =
+            refresh(events.contains(Player.EVENT_TIMELINE_CHANGED))
         override fun onPlayerError(error: PlaybackException) {
             _ui.value = _ui.value.copy(error = error.message ?: "Błąd odtwarzania")
         }
     }
 
-    private fun refresh() {
+    private fun refresh(timelineChanged: Boolean = true) {
         val c = controller ?: return
         val n = c.mediaItemCount
-        val queue = ArrayList<Int>(n)
-        for (i in 0 until n) c.getMediaItemAt(i).mediaId.toIntOrNull()?.let { queue += it }
+        if (timelineChanged || queueCache.size != n) {
+            val queue = ArrayList<Int>(n)
+            for (i in 0 until n) c.getMediaItemAt(i).mediaId.toIntOrNull()?.let { queue += it }
+            queueCache = queue
+        }
+        val queue = queueCache
+        _now.value = NowPlaying(c.currentMediaItem?.mediaId?.toIntOrNull(), c.isPlaying)
         _ui.value = PlayerUi(
             connected = true,
             isPlaying = c.isPlaying,
