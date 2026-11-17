@@ -114,7 +114,8 @@ fun MiniPlayer() {
         Modifier.fillMaxWidth().background(C39.Surface).navigationBarsPadding()
             .pointerInput(Unit) { detectVerticalDragGestures { _, drag -> if (drag < -12) Nav.playerOpen = true } },
     ) {
-        val frac = if (ui.durationMs > 0) (ui.positionMs.toFloat() / ui.durationMs).coerceIn(0f, 1f) else 0f
+        val durMs = if (ui.durationMs > 0) ui.durationMs else (row.duration * 1000).toLong()
+        val frac = if (durMs > 0) (ui.positionMs.toFloat() / durMs).coerceIn(0f, 1f) else 0f
         LinearProgressIndicator(progress = { frac }, Modifier.fillMaxWidth().height(2.dp), color = accent, trackColor = C39.Surface3)
         Row(
             Modifier.fillMaxWidth().clickable { Nav.playerOpen = true }.padding(horizontal = 10.dp, vertical = 7.dp),
@@ -199,7 +200,9 @@ fun PlayerScreen() {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            val dur = ui.durationMs.coerceAtLeast(1)
+            // przed przygotowaniem odtwarzacza (np. kolejka przywrócona po uruchomieniu) długość jest nieznana –
+            // wtedy z biblioteki
+            val dur = (if (ui.durationMs > 0) ui.durationMs else ((row?.duration ?: 0.0) * 1000).toLong()).coerceAtLeast(1)
             val pos = if (seeking) seekPos else ui.positionMs.toFloat()
             Slider(
                 value = pos.coerceIn(0f, dur.toFloat()), valueRange = 0f..dur.toFloat(),
@@ -212,7 +215,7 @@ fun PlayerScreen() {
                 Spacer(Modifier.weight(1f))
                 if (ui.buffering) Text("buforowanie…", color = C39.Text3, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
-                Text(T.durationMs(ui.durationMs), color = C39.Text2, fontSize = 12.sp)
+                Text(T.durationMs(dur), color = C39.Text2, fontSize = 12.sp)
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {

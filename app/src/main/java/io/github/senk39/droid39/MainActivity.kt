@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.media3.common.util.UnstableApi
@@ -140,7 +141,9 @@ private fun Root() {
 private var lanAsked = false
 
 @Composable
-private fun Screen(r: Route) {
+private fun Screen(r: Route) = key(r) {
+    // osobny stan (przewinięcie, sortowanie, filtr) dla każdego ekranu – bez tego np. przejście z Anime do
+    // podkategorii zostawiało listę przewiniętą jak poprzednio
     when (r) {
         Route.Home -> HomeScreen()
         is Route.Node -> NodeScreen(r.id)

@@ -69,6 +69,9 @@ fun Art(
     val px = with(LocalDensity.current) { size.roundToPx() }
     val art = App.graph.art
     val bmp by produceState(initialValue = art.peek(artKey, px), artKey, rel, px, large) {
+        // produceState zachowuje poprzednią wartość przy zmianie kluczy – bez tego po zmianie utworu
+        // zostawała okładka poprzedniego (gdy nowy nie ma własnej)
+        value = art.peek(artKey, px)
         if (large) {
             // najpierw miniatura (od razu), potem pełna rozdzielczość z pliku na telefonie
             if (value == null) value = art.load(artKey, rel, px)
