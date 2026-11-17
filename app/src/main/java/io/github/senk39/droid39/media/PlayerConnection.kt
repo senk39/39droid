@@ -76,7 +76,14 @@ class PlayerConnection(private val context: Context) {
         controller = null
     }
 
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** MediaController wolno używać tylko na wątku głównym – wywołania z innych wątków są tam przekazywane. */
     private fun withController(block: (MediaController) -> Unit) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            main.post { withController(block) }
+            return
+        }
         val c = controller
         if (c != null) block(c) else {
             pending += block

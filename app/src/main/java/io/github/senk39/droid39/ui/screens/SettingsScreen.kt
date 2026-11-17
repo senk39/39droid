@@ -143,7 +143,16 @@ fun SettingsScreen() {
             } else if (sync.message.isNotEmpty()) {
                 Text(sync.message, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = C39.Green, fontSize = 13.sp)
             }
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { Button39("Synchronizuj teraz") { scope.launch { g.sync.syncNow() } } }
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button39("Synchronizuj teraz") { scope.launch { g.sync.syncNow() } }
+                if (g.library.pendingOps > 0 || s.uploadedSeq > g.library.ackedSeq()) {
+                    // np. gdy plik dziennika zginął na NAS – PC pomija zmiany już zastosowane, więc to bezpieczne
+                    Button39("Wyślij ponownie niepotwierdzone", outlined = true) {
+                        s.uploadedSeq = g.library.ackedSeq()
+                        scope.launch { g.sync.syncNow() }
+                    }
+                }
+            }
             Toggle("Synchronizuj automatycznie", "Przy starcie (w Wi-Fi) i co 6 godzin", s.autoSync) { s.autoSync = it }
             Field("Nazwa telefonu (widoczna na PC)", s.deviceName) { s.deviceName = it }
 
@@ -230,6 +239,7 @@ fun SettingsScreen() {
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = C39.Text2)
             }
             Toggle("Pobieraj tylko przez Wi-Fi", null, s.wifiOnlyDownloads) { s.wifiOnlyDownloads = it }
+            Toggle("Pobieraj automatycznie po synchronizacji", "Nowe utwory z reguł (np. świeże ♥♥ z PC) trafiają na telefon same", s.autoDownload) { s.autoDownload = it }
             Toggle("Usuwaj pobrane, gdy przestaną pasować do reguł", "Tylko pliki pobrane przez aplikację", s.removeUnwanted) { s.removeUnwanted = it }
             val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
             val progress by remember { Jobs.downloadProgress(ctx) }.collectAsState(initial = null)

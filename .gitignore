@@ -22,3 +22,4 @@ __pycache__/
 # system
 .DS_Store
 Thumbs.db
+/pc/sync39.log

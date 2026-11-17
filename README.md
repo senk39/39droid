@@ -25,7 +25,9 @@ i odsyła na PC to, co zmieniło się podczas słuchania.
 
 * **Na telefonie zawsze**: obraz biblioteki (ok. 12 MB do pobrania przy 63 tys. utworów), okładki oglądanych
   albumów oraz utwory z reguł „offline” – domyślnie Najlepsze ♥♥ (ok. 2,6 tys. utworów) i Do odsłuchania.
-  Polubione ♥ (14 tys., ok. 140 GB), playlisty i kategorie dołączasz jednym przełącznikiem.
+  Polubione ♥ (14 tys., ok. 140 GB), playlisty i kategorie dołączasz jednym przełącznikiem (playlista lub kategoria:
+  menu ⋮ → „Zawsze na telefonie”). Pierwsze pobieranie uruchamiasz sam (Ustawienia → Pobierz teraz – widać, ile GB
+  zajmie); potem można włączyć „Pobieraj automatycznie po synchronizacji”.
 * **Z sieci**: reszta biblioteki (np. 392 GB folderu Vocaloid) jest strumieniowana z NAS i trafia do pamięci
   podręcznej LRU na karcie (domyślnie 4 GB, do 64 GB).
 * **Istniejąca kopia na karcie SD** (np. `/storage/XXXX-XXXX/MUZYKA`) jest wykorzystywana bez zmian – aplikacja
@@ -64,7 +66,8 @@ APK buduje się poleceniem (JDK 21, Android SDK z platformą 37):
 gradlew assembleRelease
 ```
 
-Plik: `app/build/outputs/apk/release/app-release.apk`. Instalacja przez USB (debugowanie USB włączone w
+Plik: `app/build/outputs/apk/release/app-release.apk`. GitHub Actions buduje wersję debug przy każdym pushu
+(zakładka Actions → artefakt `39droid-debug`). Instalacja przez USB (debugowanie USB włączone w
 Opcjach programisty): `adb install -r app/build/outputs/apk/release/app-release.apk`, albo skopiuj plik na telefon
 i otwórz go (zezwól na instalację z tego źródła). Wersja release jest podpisana kluczem debug tego komputera,
 więc kolejne wersje instalują się jako aktualizacje.
@@ -102,7 +105,7 @@ Pythonem z PyQt6 i mutagen – tym samym, który uruchamia 39player):
 |---|---|
 | `python -m sync39 export` | migawka biblioteki + miniatury okładek → NAS. Działa na kopii bazy, więc można go uruchomić także przy włączonym 39player. Pierwszy eksport okładek (~7 tys. albumów) trwa kilka minut, kolejne tylko nowe. |
 | `python -m sync39 import` | zmiany z telefonu → 39player (serduszka trafiają do `_REKOMENDACJE Z PC` / `_NAJLEPSZE` jak kliknięcia w programie; odtworzenia, oznaczenia „Do odsłuchania”, playlisty). **39player musi być zamknięty.** `--dry-run` pokazuje, co zostałoby zastosowane. |
-| `python -m sync39 run` | import → uruchom 39player → po zamknięciu export. Wygodne jako skrót zamiast `39player.lnk`. |
+| `python -m sync39 run` | import → uruchom 39player → po zamknięciu export. To samo robi dwuklik na **`pc/39player+sync.pyw`** (bez okna konsoli, dziennik w `pc/sync39.log`) – wygodne jako skrót zamiast `39player.lnk`. |
 | `python -m sync39 status` | stan migawki, potwierdzone i oczekujące zmiany z telefonów |
 | `python -m sync39 music` | kopiowanie muzyki na NAS (robocopy) |
 

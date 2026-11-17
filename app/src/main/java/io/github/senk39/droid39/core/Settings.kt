@@ -92,6 +92,8 @@ class Settings(context: Context) {
     var offlinePlaylists by set("offline_playlists")
     var offlineNodes by set("offline_nodes")
     var removeUnwanted by bool("offline_remove_unwanted", true)
+    /** Po każdej synchronizacji pobieraj brakujące utwory z reguł offline (domyślnie ręcznie – „Pobierz teraz”). */
+    var autoDownload by bool("offline_auto_download", false)
     var wifiOnlyDownloads by bool("wifi_only_downloads", true)
     var allowMobileStreaming by bool("allow_mobile_streaming", true)
     var autoSync by bool("auto_sync", true)

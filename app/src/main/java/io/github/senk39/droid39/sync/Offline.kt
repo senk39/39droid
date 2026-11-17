@@ -51,11 +51,22 @@ class Offline(private val settings: Settings, private val library: Library, priv
     fun isNodePinned(path: String) = path in settings.offlineNodes
     fun isPlaylistPinned(rel: String) = rel in settings.offlinePlaylists
 
+    /** Wołane, gdy użytkownik przypnie playlistę / kategorię – pobieranie startuje od razu. */
+    var onPinned: (() -> Unit)? = null
+
     fun toggleNode(path: String) {
-        settings.offlineNodes = settings.offlineNodes.toMutableSet().apply { if (!add(path)) remove(path) }
+        val set = settings.offlineNodes.toMutableSet()
+        val added = set.add(path)
+        if (!added) set.remove(path)
+        settings.offlineNodes = set
+        if (added) onPinned?.invoke()
     }
 
     fun togglePlaylist(rel: String) {
-        settings.offlinePlaylists = settings.offlinePlaylists.toMutableSet().apply { if (!add(rel)) remove(rel) }
+        val set = settings.offlinePlaylists.toMutableSet()
+        val added = set.add(rel)
+        if (!added) set.remove(rel)
+        settings.offlinePlaylists = set
+        if (added) onPinned?.invoke()
     }
 }

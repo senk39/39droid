@@ -99,6 +99,7 @@ class Library(context: Context, private val settings: Settings, val local: Local
         _snapVersion.value++
     }
 
+    @Synchronized
     fun reloadOverlay() {
         val ops = local.ops()
         val hearts = HashMap<Int, Int>()
@@ -147,10 +148,18 @@ class Library(context: Context, private val settings: Settings, val local: Local
                 setMarks(r, Marks(level == 2, level >= 1, m.listened), notify = false)
             } else {
                 local.addOp("heart", r.id, r.rel, null, level.coerceIn(0, 2))
+                // jak set_heart(immediate=True) w 39player: utwór z listy „Do odsłuchania” dostaje też oznaczenie
+                if (inUnlistened(r.id)) {
+                    val m = marks(r.id) ?: Marks(false, false, false)
+                    local.addOp("mark", r.id, r.rel, null, Marks(level == 2, level >= 1, m.listened).bits)
+                }
             }
         }
         changed()
     }
+
+    /** Ostatni numer zmiany potwierdzony przez PC (z bieżącej migawki). */
+    fun ackedSeq(): Long = withSnap { it.applied[settings.deviceId] } ?: 0L
 
     fun cycleHeart(row: TrackRow, unlistenedView: Boolean): Int {
         val next = (displayHeart(row, unlistenedView) + 1) % 3

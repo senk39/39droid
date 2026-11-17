@@ -63,10 +63,14 @@ class Graph(val app: Application) {
 
     fun start() {
         library.onLocalChange = { sync.schedulePush() }
-        sync.onSnapshotInstalled = { if (hasOfflineRules()) Jobs.startDownloads(app, settings.wifiOnlyDownloads) }
+        sync.onSnapshotInstalled = {
+            if (settings.autoDownload && hasOfflineRules()) Jobs.startDownloads(app, settings.wifiOnlyDownloads)
+        }
+        offline.onPinned = { Jobs.startDownloads(app, settings.wifiOnlyDownloads) }
         scope.launch(Dispatchers.IO) {
             library.open()
             files.load()
+            if (files.downloaded().isEmpty()) files.scanDownloads()   // np. po wyczyszczeniu bazy aplikacji
             files.recomputeAvailable(library)
             if (settings.mirrorList().isNotEmpty() && System.currentTimeMillis() - settings.lastMirrorScan > 24 * 3600_000L) {
                 files.scanMirrors()
