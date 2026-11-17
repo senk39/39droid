@@ -1,0 +1,13 @@
+# smbj / BouncyCastle: klasy ładowane refleksją i opcjonalne zależności (Kerberos/JGSS nie istnieje na Androidzie)
+-keep class com.hierynomus.** { *; }
+-keep class net.engio.mbassy.** { *; }
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.ietf.jgss.**
+-dontwarn javax.security.auth.**
+-dontwarn javax.el.**
+-dontwarn org.slf4j.**
+-dontwarn com.sun.**
+-dontwarn org.bouncycastle.**
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**

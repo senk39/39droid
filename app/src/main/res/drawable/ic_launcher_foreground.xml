@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- fala dźwiękowa w kolorze Miku i nuta -->
+    <path android:fillColor="#FF39C5BB" android:pathData="M30,50h4v8h-4z M38,44h4v20h-4z M66,46h4v16h-4z M74,51h4v6h-4z" />
+    <group android:translateX="30" android:translateY="28" android:scaleX="2" android:scaleY="2">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z" />
+    </group>
+    <path android:fillColor="#FFE12885" android:pathData="M58,30h8v4h-8z" />
+</vector>

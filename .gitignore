@@ -1,0 +1,24 @@
+# Gradle / Android Studio
+.gradle/
+build/
+/app/build/
+/local.properties
+/keystore.properties
+*.jks
+*.keystore
+.idea/
+*.iml
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Python (pc/)
+__pycache__/
+*.pyc
+/pc/sync39.json
+/pc/.venv/
+
+# system
+.DS_Store
+Thumbs.db
