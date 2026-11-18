@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -23,6 +24,7 @@ class DaemonConfirmTest(unittest.TestCase):
         self.src = os.path.join(self.tmp, "PC")
         self.dst = os.path.join(self.tmp, "NAS")
         os.makedirs(self.dst)
+        os.makedirs(os.path.join(self.tmp, "data"))                  # dane „39player” – nie prawdziwe z LOCALAPPDATA
         t = time.time() - 5000
         for i in range(60):
             p = os.path.join(self.src, f"A{i % 3}", f"{i:02d}.mp3")
@@ -79,6 +81,34 @@ class DaemonConfirmTest(unittest.TestCase):
         self.assertEqual((st["state"], st["pending_deletions"]), ("idle", 0))
         self.assertFalse(os.path.exists(os.path.join(self.dst, "A1")))
         self.assertFalse(os.path.exists(settings.state_file(daemon.PENDING_FILE)))
+
+    def test_failed_export_keeps_running_and_backs_off(self):
+        calls = []
+
+        def timeout(*args, **kw):
+            calls.append(kw.get("timeout"))
+            raise subprocess.TimeoutExpired(args, kw.get("timeout"))
+
+        self.d.sync_dir = os.path.join(self.tmp, "39sync")
+        os.makedirs(self.d.sync_dir)
+        old = daemon.run_cli
+        daemon.run_cli = timeout
+        try:
+            self.d.phone_cycle()                                      # przekroczony czas nie zatrzymuje demona
+            self.assertEqual(self.status()["state"], "error")
+            self.assertEqual(calls, [daemon.EXPORT_TIMEOUT_S])
+            self.d.phone_cycle()                                      # ponowna próba dopiero po EXPORT_RETRY_S
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(self.d.force_export)
+
+            self.d.export_retry_at = time.time() - 1
+            daemon.run_cli = lambda *args, **kw: 0
+            self.d.phone_cycle()
+            self.assertEqual(self.status()["state"], "idle")
+            self.assertFalse(self.d.force_export)
+            self.assertEqual(self.d.export_retry_at, 0.0)
+        finally:
+            daemon.run_cli = old
 
 
 if __name__ == "__main__":

@@ -179,6 +179,8 @@ def music_source(cfg: dict) -> str:
 
 CONFIRM_FILE = "confirm-deletions.json"
 PENDING_FILE = "pending-deletions.txt"
+EXPORT_TIMEOUT_S = 3 * 3600          # pierwszy eksport tworzy miniatury wszystkich okładek
+EXPORT_RETRY_S = 300                 # po nieudanym eksporcie – nie częściej (każda próba kopiuje bazę 39player)
 
 
 def take_confirmation() -> int | None:
@@ -213,6 +215,7 @@ class Daemon:
         self.sig_changed_at = 0.0
         self.applied_mtime = self._applied_mtime()
         self.force_export = True                                   # pierwszy eksport po starcie
+        self.export_retry_at = 0.0
         self.last_full_mirror = 0.0
 
     def _applied_mtime(self) -> float:
@@ -305,18 +308,27 @@ class Daemon:
         ack_needed = applied > self.applied_mtime
         quiet = now - self.sig_changed_at >= 45
         due = now - self.last_export >= float(self.cfg.get("export_min_interval", 600))
+        if now < self.export_retry_at:
+            return
         if self.force_export or ack_needed or (sig > self.exported_sig and quiet and due):
             set_status(state="export", message="Eksport biblioteki dla telefonu…")
             log.info("Eksport biblioteki dla telefonu")
-            rc = run_cli("export")
+            try:
+                rc = run_cli("export", timeout=int(self.cfg.get("export_timeout", EXPORT_TIMEOUT_S)))
+            except Exception as e:                                 # noqa: BLE001 – np. przekroczony czas; demon działa dalej
+                log.exception("Eksport dla telefonu: %s", e)
+                rc = -1
             self.last_export = time.time()
             if rc == 0:
                 self.exported_sig = sig
                 self.applied_mtime = applied
                 self.force_export = False
+                self.export_retry_at = 0.0
                 set_status(state="idle", last_export=self.last_export, message="Biblioteka dla telefonu aktualna")
             else:
-                set_status(state="error", message="Eksport dla telefonu nie powiódł się – zob. sync39.log")
+                self.export_retry_at = self.last_export + EXPORT_RETRY_S
+                set_status(state="error", message="Eksport dla telefonu nie powiódł się – ponowna próba za "
+                                                  f"{EXPORT_RETRY_S // 60} min, zob. sync39.log")
 
     # ------------------------------------------------------------------ pętla
     def run(self) -> None:
