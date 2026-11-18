@@ -42,6 +42,21 @@ def _atomic_write(path: str, data: bytes) -> None:
     os.replace(tmp, path)
 
 
+def with_db_applied(lib, applied: dict) -> dict:
+    """Potwierdzenia dla migawki: numery z tabeli droid_applied skopiowanej bazy 39player (zapisywane razem ze zmianą,
+    więc dokładnie to, co jest w kopii) – a dla urządzeń bez wpisu w bazie numery z applied.json odczytane przed kopią
+    bazy. Inaczej telefon mógłby dodać swoje odtworzenia drugi raz do tych, które już są w migawce."""
+    out = {k: dict(v) for k, v in (applied or {}).items() if isinstance(v, dict)}
+    try:
+        from player39 import droid_link
+    except ImportError:
+        return out
+    for dev, seq in droid_link.db_applied(getattr(lib, "con", None)).items():
+        st = out.setdefault(dev, {})
+        st["seq"] = seq
+    return out
+
+
 def export_to_file(cfg, out: str) -> int:
     """Sam plik biblioteki (.db.gz) do skopiowania na telefon – bez NAS (39droid: Wczytaj bibliotekę z pliku)."""
     pdir = cfg["player39_dir"]
@@ -58,7 +73,7 @@ def export_to_file(cfg, out: str) -> int:
     try:
         lib, pcfg = p39.load_library(pdir, data)
         db = os.path.join(work, "library.db")
-        snapshot.build(lib, pcfg, db, applied, log)
+        snapshot.build(lib, pcfg, db, with_db_applied(lib, applied), log)
         tmp = out + ".tmp"
         with open(db, "rb") as src, gzip.open(tmp, "wb", compresslevel=6) as dst:
             shutil.copyfileobj(src, dst, 1 << 20)
@@ -87,6 +102,7 @@ def cmd_export(cfg, args) -> int:
     lib = None
     try:
         lib, pcfg = p39.load_library(pdir, data)
+        applied = with_db_applied(lib, applied)
         work = tempfile.mkdtemp(prefix="sync39-out-")
         try:
             db = os.path.join(work, "library.db")

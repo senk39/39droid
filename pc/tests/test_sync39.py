@@ -120,6 +120,13 @@ class Sync39Test(unittest.TestCase):
         self.assertNotIn(played, lib.playlist_contains("playlista_najlepsze"))   # playlisty systemowej nie zmieniamy
         from player39 import droid_link                     # …a telefon dostaje powód (state/rejected-<urządzenie>.json)
         self.assertEqual([x["seq"] for x in droid_link.load_rejected(self.sync_dir, dev)], [8])
+        # numer zastosowanych zmian także w bazie biblioteki – eksport bierze go z kopii bazy (pierwszeństwo przed
+        # applied.json), inne urządzenia – z applied.json
+        from sync39.__main__ import with_db_applied
+        self.assertEqual(droid_link.db_applied(lib.con)[dev], events[-1]["seq"])
+        merged = with_db_applied(lib, {dev: {"seq": 2, "name": "Test"}, "inne": {"seq": 7}})
+        self.assertEqual(merged[dev], {"seq": events[-1]["seq"], "name": "Test"})
+        self.assertEqual(merged["inne"], {"seq": 7})
         if unl is not None:
             self.assertEqual(lib.marks_of(unl), (0, 1, 1))
         self.assertTrue(os.path.exists(os.path.join(d, "done", "j-0000000001-0000000009.json")))
