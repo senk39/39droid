@@ -38,6 +38,8 @@ class Sync39Test(unittest.TestCase):
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False)
         cls.lib, cls.cfg = p39.load_library(PLAYER_DIR, cls.data)
+        from player39 import droid_link                     # blokada zmian z telefonu – nie w ~/.39sync
+        droid_link.SHARED_DIR = os.path.join(cls.tmp, "shared")
         cls.sync_dir = os.path.join(cls.tmp, "39sync")
         os.makedirs(cls.sync_dir)
 

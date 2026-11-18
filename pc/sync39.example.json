@@ -1,7 +1,13 @@
 {
   "player39_dir": "D:\\Claude Projects\\39player",
-  "sync_dir": "\\\\DXP4800PLUS\\Muzyka\\39sync",
-  "music_dir": "\\\\DXP4800PLUS\\Muzyka\\MUZYKA",
+  "sync_dir": "\\\\192.168.1.20\\personal_folder\\39sync",
+  "music_dir": "\\\\192.168.1.20\\personal_folder\\Music",
+  "music_src": "",
+  "mirror_delete": true,
+  "mirror_max_delete_ratio": 0.02,
+  "mirror_min_delete_guard": 50,
+  "mirror_threads": 4,
+  "export_min_interval": 600,
   "art_size": 512,
   "art_quality": 82,
   "keep_snapshots": 2

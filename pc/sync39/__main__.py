@@ -3,10 +3,15 @@
     python -m sync39 export [--no-art] [--art-limit N]   migawka biblioteki i okładki → NAS (bezpieczne w trakcie
                                                            pracy 39player – działa na kopii bazy)
     python -m sync39 export --out D:\\39droid.db.gz        sam plik biblioteki do skopiowania na telefon (bez NAS)
-    python -m sync39 import [--dry-run] [--force]         zmiany z telefonu → 39player (39player musi być zamknięty)
+    python -m sync39 import [--dry-run] [--force]         zmiany z telefonu → 39player (przy zamkniętym 39player;
+                                                           działający 39player stosuje je sam co 30 s)
     python -m sync39 run                                  import → uruchom 39player → po zamknięciu export
     python -m sync39 status                               stan folderu synchronizacji
-    python -m sync39 music [--dry-run] [--purge]          kopiowanie nowych/zmienionych plików muzyki na NAS (robocopy)
+    python -m sync39 mirror [--dry-run [--list]] [--confirm]   lustro folderu muzyki PC → NAS (dokładna kopia)
+    python -m sync39 watch                                w tle: lustro po każdej zmianie, eksport dla telefonu,
+                                                           zmiany z telefonu przy zamkniętym 39player
+    python -m sync39 setup --sync-dir … --music-dir …     wspólne ustawienia (%USERPROFILE%\\.39sync\\sync39.json)
+    python -m sync39 autostart [--start] [--remove]       sync39 w tle po zalogowaniu (Harmonogram zadań)
 """
 from __future__ import annotations
 
@@ -141,6 +146,9 @@ def cmd_import(cfg, args) -> int:
     lib, _pcfg = p39.load_library(cfg["player39_dir"])
     try:
         inbox.run(lib, sync_dir, args.dry_run, log)
+    except RuntimeError as e:                                  # blokada: zmiany stosuje właśnie 39player
+        log(f"Pominięto: {e}")
+        return 3
     finally:
         try:
             lib.con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -181,31 +189,73 @@ def cmd_status(cfg, args) -> int:
     return 0
 
 
-def cmd_music(cfg, args) -> int:
+def cmd_mirror(cfg, args) -> int:
+    """Jeden przebieg lustra PC → NAS (to samo, co robi sync39 w tle po każdej zmianie)."""
+    from . import daemon, mirror
+    src = daemon.music_source(cfg)
     dst = (cfg.get("music_dir") or "").strip()
-    if not dst:
-        raise SystemExit("Ustaw „music_dir” (kopia biblioteki na NAS) w sync39.json")
-    p39.add_path(cfg["player39_dir"])
-    data = p39.copy_data(cfg["player39_dir"])
-    try:
-        with open(os.path.join(data, "config.json"), encoding="utf-8-sig") as f:
-            roots = json.load(f).get("foldery_muzyki") or []
-    finally:
-        shutil.rmtree(data, ignore_errors=True)
-    if len(roots) != 1:
-        raise SystemExit(f"Polecenie „music” obsługuje jeden folder muzyki (jest: {roots})")
-    src = roots[0]
-    cmd = ["robocopy", src, dst, "/E", "/XO", "/FFT", "/R:1", "/W:2", "/MT:8", "/NP", "/NDL",
-           "/XF", "*.tmp", "desktop.ini", "Thumbs.db"]
-    if args.purge:
-        cmd.append("/PURGE")                                  # usuwa z NAS pliki, których nie ma na PC
-    if args.dry_run:
-        cmd.append("/L")
-    log("Kopiowanie muzyki na NAS:", " ".join(f'"{c}"' if " " in c else c for c in cmd))
+    if not src or not dst:
+        raise SystemExit("Ustaw „music_dir” (i ewentualnie „music_src”) – python -m sync39 setup")
+    log(f"Lustro {src} → {dst}" + (" (próba – bez zmian)" if args.dry_run else ""))
+    p, _stats = mirror.run_once(
+        src, dst, settings.state_file("mirror-index.json"),
+        delete=bool(cfg.get("mirror_delete", True)) and not args.no_delete,
+        max_ratio=float(cfg.get("mirror_max_delete_ratio", 0.02)),
+        min_guard=int(cfg.get("mirror_min_delete_guard", 50)),
+        threads=int(cfg.get("mirror_threads", 4)), dry_run=args.dry_run, confirmed=args.confirm, log=log)
+    if args.dry_run and args.list:
+        for o, n in p.renames[:200]:
+            log(f"  PRZENIEŚ {o} → {n}")
+        for r in p.copies[:200]:
+            log(f"  KOPIUJ   {r}")
+        for r in p.deletions[:200]:
+            log(f"  USUŃ     {r}")
+    if p.guarded and not args.dry_run:
+        log("Usuwanie wstrzymane przez zabezpieczenie. Sprawdź listę (--dry-run --list) i potwierdź: "
+            "python -m sync39 mirror --confirm")
+    return 0
+
+
+def cmd_watch(cfg, args) -> int:
+    from . import daemon
+    return daemon.main(console=True)
+
+
+def cmd_setup(cfg, args) -> int:
+    """Zapisuje wspólne ustawienia (%USERPROFILE%\\.39sync\\sync39.json) – czyta je też 39player."""
+    cfg["_path"] = settings.SHARED_PATH
+    for k in ("player39_dir", "sync_dir", "music_dir", "music_src"):
+        v = getattr(args, k)
+        if v is not None:
+            cfg[k] = v
+    settings.save(cfg)
+    log(f"Zapisano {settings.SHARED_PATH}:")
+    for k in ("player39_dir", "music_src", "music_dir", "sync_dir"):
+        log(f"  {k} = {cfg.get(k) or '(auto)'}")
+    return 0
+
+
+TASK = "39sync"
+
+
+def cmd_autostart(cfg, args) -> int:
+    """Zadanie Harmonogramu zadań uruchamiające sync39 w tle po zalogowaniu (bez okna)."""
+    if args.remove:
+        rc = subprocess.run(["schtasks", "/Delete", "/TN", TASK, "/F"], check=False).returncode
+        log("Usunięto zadanie autostartu." if rc == 0 else "Nie udało się usunąć zadania (może nie istnieje).")
+        return rc
+    exe = sys.executable
+    w = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    pyw = os.path.join(settings.HERE, "39sync.pyw")
+    tr = f'"{w if os.path.exists(w) else exe}" "{pyw}"'
+    cmd = ["schtasks", "/Create", "/TN", TASK, "/TR", tr, "/SC", "ONLOGON", "/DELAY", "0001:00", "/RL", "LIMITED", "/F"]
     rc = subprocess.run(cmd, check=False).returncode
-    # robocopy: 0–7 oznacza sukces (1 – skopiowano pliki), ≥8 – błędy
-    log("Gotowe." if rc < 8 else f"robocopy zgłosił błędy (kod {rc})")
-    return 0 if rc < 8 else rc
+    if rc == 0:
+        log(f"Zadanie „{TASK}” uruchomi sync39 w tle po każdym zalogowaniu (z minutowym opóźnieniem).")
+        if args.start:
+            subprocess.run(["schtasks", "/Run", "/TN", TASK], check=False)
+            log("Uruchomiono teraz.")
+    return rc
 
 
 def main(argv=None) -> int:
@@ -222,13 +272,26 @@ def main(argv=None) -> int:
     i.add_argument("--force", action="store_true", help="nie sprawdzaj, czy 39player działa (niezalecane)")
     sub.add_parser("run", help="import → 39player → export")
     sub.add_parser("status", help="stan synchronizacji")
-    m = sub.add_parser("music", help="kopiuj nowe/zmienione pliki muzyki na NAS (robocopy)")
-    m.add_argument("--dry-run", action="store_true", help="tylko lista (robocopy /L)")
-    m.add_argument("--purge", action="store_true", help="usuń z NAS pliki, których nie ma już na PC")
+    for name in ("mirror", "music"):
+        m = sub.add_parser(name, help="lustro folderu muzyki PC → NAS (dokładna kopia)")
+        m.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostałoby zrobione")
+        m.add_argument("--list", action="store_true", help="z --dry-run: wypisz pliki")
+        m.add_argument("--confirm", action="store_true", help="potwierdź usunięcie wstrzymane przez zabezpieczenie")
+        m.add_argument("--no-delete", action="store_true", help="tylko kopiuj i przenoś, bez usuwania")
+    sub.add_parser("watch", help="działaj w tle: lustro, eksport dla telefonu, zmiany z telefonu")
+    s = sub.add_parser("setup", help="zapisz wspólne ustawienia (folder NAS, muzyka)")
+    s.add_argument("--player39-dir", dest="player39_dir")
+    s.add_argument("--sync-dir", dest="sync_dir", help=r"np. \\192.168.1.20\personal_folder\39sync")
+    s.add_argument("--music-dir", dest="music_dir", help=r"kopia na NAS, np. \\192.168.1.20\personal_folder\Music")
+    s.add_argument("--music-src", dest="music_src", help=r"folder muzyki na PC (puste – z 39player, np. F:\MUZYKA)")
+    a = sub.add_parser("autostart", help="uruchamiaj sync39 w tle po zalogowaniu (Harmonogram zadań)")
+    a.add_argument("--remove", action="store_true", help="usuń zadanie autostartu")
+    a.add_argument("--start", action="store_true", help="po utworzeniu uruchom od razu")
     args = ap.parse_args(argv)
     cfg = settings.load(args.config)
     return {"export": cmd_export, "import": cmd_import, "run": cmd_run, "status": cmd_status,
-            "music": cmd_music}[args.cmd](cfg, args)
+            "mirror": cmd_mirror, "music": cmd_mirror, "watch": cmd_watch, "setup": cmd_setup,
+            "autostart": cmd_autostart}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

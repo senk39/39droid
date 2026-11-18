@@ -17,7 +17,7 @@ i odsyła na PC to, co zmieniło się podczas słuchania.
                                        39sync/art/xx/<klucz>.jpg (okładki)
                             ← import   39sync/inbox/<telefon>/j-*.json   ←──────  dziennik zmian (♥, odsłuchy,
                                                                                   oznaczenia, playlisty)
- F:\MUZYKA   ── robocopy (music) ──→   MUZYKA/…  (kopia biblioteki)     ── SMB/WebDAV ──→ strumień + pamięć LRU
+ F:\MUZYKA   ── sync39 w tle ──→       Music/…  (dokładna kopia PC)     ── SMB/WebDAV ──→ strumień + pamięć LRU
                                                                                   pobrane „offline”: ♥♥, ♥,
                                                                                   Do odsłuchania, wybrane
                                                                                   playlisty i kategorie
@@ -89,15 +89,15 @@ z NAS. Gdy NAS zacznie działać, migawka z NAS zastąpi wczytany plik.
 
 ## Konfiguracja NAS (Ugreen DXP4800 Plus, UGOS Pro)
 
-1. **Udział na muzykę**, np. `Muzyka`, a w nim folder `MUZYKA` – kopia `F:\MUZYKA` (ta sama struktura folderów).
-   Pierwsze kopiowanie i kolejne aktualizacje (tylko nowe i zmienione pliki, nic nie jest usuwane):
-   ```
-   cd pc
-   python -m sync39 music
-   ```
-   (`--dry-run` – tylko lista, `--purge` – usuwa z NAS pliki, których nie ma już na PC). Pierwsza kopia ~600 GB
-   przez 1 Gb/s trwa kilka godzin; robocopy można przerwać i wznowić.
-2. **Folder synchronizacji** `39sync` w tym samym udziale (tworzy go sync39).
+1. **Folder muzyki na NAS**, np. `\\192.168.1.20\personal_folder\Music` – **dokładna kopia** `F:\MUZYKA`
+   (ta sama struktura folderów). PC dalej gra z własnego dysku SSD; kopię na NAS utrzymuje **sync39 w tle**
+   (niżej): każde dodanie, edycja tagów, zmiana nazwy czy usunięcie na PC trafia na NAS po ok. 20 s ciszy, a co
+   30 min jest pełne porównanie. Zmiana nazwy pliku lub folderu to przeniesienie na NAS, bez ponownego wysyłania.
+   Gdy w jednym przebiegu miałoby zniknąć z NAS więcej niż 2% plików (albo na PC nagle jest ich dużo mniej, np.
+   odłączony dysk), usuwanie czeka na potwierdzenie – w 39player na pasku stanu („NAS: N do usunięcia”) albo
+   `python -m sync39 mirror --confirm`. Istniejąca kopia na NAS jest dopasowywana po rozmiarze – nie jest wysyłana
+   drugi raz.
+2. **Folder synchronizacji** `39sync` obok (np. `\\192.168.1.20\personal_folder\39sync`; tworzy go sync39).
 3. Telefon łączy się przez **SMB** (to, co już działa w LAN) albo **WebDAV** (Panel sterowania → Usługi plików →
    WebDAV; porty 5005 HTTP / 5006 HTTPS). Konto: najlepiej osobny użytkownik NAS tylko do odczytu muzyki
    i zapisu w `39sync`.
@@ -117,18 +117,42 @@ szyfrowane kluczem z Android Keystore) → **Testuj połączenie** → **Synchro
 
 ## Synchronizacja z 39player (PC) – `pc/sync39`
 
-Ustawienia: skopiuj `pc/sync39.example.json` do `pc/sync39.json` i uzupełnij ścieżki
-(`player39_dir`, `sync_dir` – np. `\\DXP4800PLUS\Muzyka\39sync`, `music_dir`). Polecenia (z folderu `pc`,
-Pythonem z PyQt6 i mutagen – tym samym, który uruchamia 39player):
+Jednorazowo (z folderu `pc`, Pythonem z PyQt6 i mutagen – tym samym, który uruchamia 39player):
+
+```
+python -m sync39 setup --sync-dir \\192.168.1.20\personal_folder\39sync --music-dir \\192.168.1.20\personal_folder\Music
+python -m sync39 mirror --dry-run --list
+python -m sync39 autostart --start
+```
+
+`setup` zapisuje wspólne ustawienia w `%USERPROFILE%\.39sync\sync39.json` (czyta je też 39player); źródło lustra
+to pierwszy folder muzyki z ustawień 39player (np. `F:\MUZYKA`), inne – `--music-src`. `autostart` dodaje zadanie
+**39sync** w Harmonogramie zadań (po zalogowaniu, bez okna) – to **sync39 w tle**:
+
+* **lustro muzyki** PC → NAS po każdej zmianie w folderze muzyki (powiadomienia Windows) i co 30 min,
+* **biblioteka dla telefonu** (migawka + okładki) po zmianach w 39player – najczęściej co 10 min, a po
+  zastosowaniu zmian z telefonu od razu (telefon dostaje potwierdzenie),
+* **zmiany z telefonu przy zamkniętym 39player** – działający 39player (od wersji 1.3.62) stosuje je sam co 30 s,
+  tym samym kodem (`player39/droid_link.py`).
+
+Stan i dziennik: `%USERPROFILE%\.39sync` (`status.json`, `sync39.log`, `pending-deletions.txt` – lista plików
+czekających na potwierdzenie usunięcia). 39player pokazuje go w **Narzędzia → Telefon (39droid) → Stan
+synchronizacji…**.
+
+**Telefon ↔ PC na żywo** (folder `39sync/state`): 39player i 39droid zapisują, co grają (kolejka, utwór, pozycja).
+**Kontynuuj z telefonu** na pasku stanu 39player przejmuje kolejkę z telefonu (telefon dostaje polecenie pauzy),
+a **Kontynuuj z PC** w 39droid – odwrotnie.
 
 | Polecenie | Co robi |
 |---|---|
+| `python -m sync39 mirror` | jeden przebieg lustra PC → NAS (`--dry-run [--list]` – tylko plan, `--confirm` – potwierdza wstrzymane usuwanie, `--no-delete` – bez usuwania). `music` – to samo. |
+| `python -m sync39 watch` | sync39 w tle w oknie konsoli (podgląd dziennika; zadanie 39sync robi to samo bez okna) |
+| `python -m sync39 autostart [--start] [--remove]` | zadanie 39sync w Harmonogramie zadań (po zalogowaniu) |
 | `python -m sync39 export --out PLIK` | sam plik biblioteki (.db.gz) do skopiowania na telefon – bez NAS. |
 | `python -m sync39 export` | migawka biblioteki + miniatury okładek → NAS. Działa na kopii bazy, więc można go uruchomić także przy włączonym 39player. Pierwszy eksport okładek (~7 tys. albumów) trwa kilka minut, kolejne tylko nowe. |
-| `python -m sync39 import` | zmiany z telefonu → 39player (serduszka trafiają do `_REKOMENDACJE Z PC` / `_NAJLEPSZE` jak kliknięcia w programie; odtworzenia, oznaczenia „Do odsłuchania”, playlisty). **39player musi być zamknięty.** `--dry-run` pokazuje, co zostałoby zastosowane. |
-| `python -m sync39 run` | import → uruchom 39player → po zamknięciu export. To samo robi dwuklik na **`pc/39player+sync.pyw`** (bez okna konsoli, dziennik w `pc/sync39.log`) – wygodne jako skrót zamiast `39player.lnk`. |
+| `python -m sync39 import` | zmiany z telefonu → 39player przy zamkniętym 39player (serduszka trafiają do `_REKOMENDACJE Z PC` / `_NAJLEPSZE` jak kliknięcia w programie; odtworzenia, oznaczenia „Do odsłuchania”, playlisty). `--dry-run` pokazuje, co zostałoby zastosowane. |
+| `python -m sync39 run` | import → uruchom 39player → po zamknięciu export (dwuklik na **`pc/39player+sync.pyw`**) – zbędne przy sync39 w tle. |
 | `python -m sync39 status` | stan migawki, potwierdzone i oczekujące zmiany z telefonów |
-| `python -m sync39 music` | kopiowanie muzyki na NAS (robocopy) |
 
 Każde zdarzenie z telefonu ma numer; PC zapisuje, do którego numeru zastosował zmiany (`39sync/state/applied.json`),
 a migawka przekazuje to telefonowi – zmiany nie zginą ani nie zostaną zastosowane dwa razy. Do czasu potwierdzenia
@@ -158,7 +182,8 @@ app/src/main/java/io/github/senk39/droid39/
   art/                    miniatury okładek (NAS, plik lokalny, pamięć)
   ui/                     Compose: biblioteka, kategorie z półkami i filtrami Love Live!, listy, odtwarzacz, ustawienia
 app/src/main/assets/ll_icons/   ikony postaci Love Live! (z 39player)
-pc/sync39/                eksport migawki, okładki, import zmian z telefonu, kopiowanie muzyki
+pc/sync39/                eksport migawki, okładki, zmiany z telefonu (przez 39player), lustro muzyki, sync39 w tle
+pc/39sync.pyw             sync39 w tle bez okna (zadanie 39sync z Harmonogramu zadań)
 ```
 
 Wymagania budowania: JDK 21, Android SDK (platforma 37, build-tools 37), Gradle 9.9 (wrapper), AGP 9.5,
