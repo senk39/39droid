@@ -219,7 +219,8 @@ fun SettingsScreen(section: String?) {
                 Button39("Wczytaj bibliotekę z pliku…", outlined = true) { importLauncher.launch(arrayOf("*/*")) }
             }
             Hint("Bez NAS: na PC python -m sync39 export --out D:\\39droid.db.gz, skopiuj plik na telefon i wybierz go tutaj.")
-            Toggle("Synchronizuj automatycznie", "Przy starcie (w Wi-Fi) i co 6 godzin", s.autoSync) { s.autoSync = it }
+            Toggle("Synchronizuj automatycznie", "Przy starcie i w tle co ${s.bgSyncHours} godz. (Wi-Fi)", s.autoSync) { s.autoSync = it }
+            IntervalsBlock()
             Field("Nazwa telefonu (widoczna na PC)", s.deviceName) { s.deviceName = it }
           }
 
@@ -460,7 +461,8 @@ private fun SettingsHome() {
     val pcStatus by g.live.pcStatus.collectAsState()
     val fmt = remember { SimpleDateFormat("d.MM.yyyy HH:mm", Locale.ROOT) }
     val summary = remember(changes, nas, rejected, pcStatus) {
-        val pcWarn = pcStatus?.warnings().orEmpty().size
+        val (stale, late) = io.github.senk39.droid39.sync.PcStatus.limits(s.pcSilentDays, s.exportLateHours)
+        val pcWarn = pcStatus?.warnings(System.currentTimeMillis(), stale, late).orEmpty().size
         mapOf(
             "nas" to when {
                 !s.nasConfigured -> "Nie skonfigurowano"
@@ -505,6 +507,31 @@ private fun SettingsHome() {
     }
 }
 
+/** Odstępy czasu synchronizacji telefonu i progi ostrzeżeń chmurki (odstępy sync39 na PC – w 39player). */
+@Composable
+private fun IntervalsBlock() {
+    val g = App.graph
+    val s = g.settings
+    val ctx = LocalContext.current
+    Text("Odstępy czasu", Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), fontSize = 14.sp,
+        color = C39.Text, fontWeight = FontWeight.SemiBold)
+    @Composable
+    fun num(label: String, value: Int, range: IntRange, hint: String, set: (Int) -> Unit) =
+        Field("$label ($hint)", value.toString(), number = true) { t -> t.toIntOrNull()?.let { set(it.coerceIn(range)) } }
+    num("Nowa biblioteka i zmiany – sprawdzanie co", s.syncCheckS, 10..3600, "s, gdy aplikacja jest otwarta albo gra") { s.syncCheckS = it }
+    num("Wysyłanie zmian do PC po", s.pushDelayS, 0..3600, "s od ostatniej zmiany") { s.pushDelayS = it }
+    num("Stan PC („Kontynuuj z PC”) co", s.pcStateS, 5..3600, "s") { s.pcStateS = it }
+    num("Polecenie pauzy z PC – sprawdzanie co", s.cmdCheckS, 2..600, "s, gdy telefon gra") { s.cmdCheckS = it }
+    num("Synchronizacja w tle co", s.bgSyncHours, 1..168, "godz., Wi-Fi") {
+        s.bgSyncHours = it
+        io.github.senk39.droid39.sync.Jobs.schedulePeriodicSync(ctx, it)
+    }
+    num("Ostrzegaj, gdy PC nie odzywa się od", s.pcSilentDays, 1..365, "dni") { s.pcSilentDays = it }
+    num("Ostrzegaj, gdy eksport spóźnia się o", s.exportLateHours, 1..168, "godz.") { s.exportLateHours = it }
+    Hint("Odstępy po stronie PC (sprawdzanie zmian biblioteki, eksport, lustro muzyki) ustawiasz w 39player: " +
+        "Ustawienia → Telefon, NAS i sieć.")
+}
+
 /** Stan sync39 na PC (state/pc-status.json): ostrzeżenia, ostatni kontakt, eksport biblioteki, lustro muzyki. */
 @Composable
 private fun PcStatusBlock() {
@@ -520,7 +547,8 @@ private fun PcStatusBlock() {
                 fontSize = 12.sp, color = C39.Text3)
             return@Column
         }
-        for (w in s.warnings(now)) {
+        val (stale, late) = io.github.senk39.droid39.sync.PcStatus.limits(g.settings.pcSilentDays, g.settings.exportLateHours)
+        for (w in s.warnings(now, stale, late)) {
             Text(w.text, fontSize = 13.sp, color = if (w.serious) C39.Warn else C39.Gold, modifier = Modifier.padding(top = 2.dp))
         }
         val lines = buildList {

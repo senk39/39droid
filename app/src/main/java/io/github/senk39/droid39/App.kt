@@ -95,7 +95,7 @@ class Graph(val app: Application) {
         scope.launch {
             library.snapVersion.drop(1).collect { files.recomputeAvailable(library) }
         }
-        Jobs.schedulePeriodicSync(app)
+        Jobs.schedulePeriodicSync(app, settings.bgSyncHours)
     }
 
     /**

@@ -134,6 +134,22 @@ class Settings(context: Context) {
         }
     var deviceName by str("device_name", Build.MODEL ?: "Android")
     var uploadedSeq by long("uploaded_seq", 0)
+
+    // ---------------------------------------------------------------- odstępy czasu synchronizacji
+    /** Nowa biblioteka / stan z PC i niewysłane zmiany – sprawdzane co tyle s (aplikacja na ekranie albo gra). */
+    var syncCheckS by int("iv_sync_check_s", 45)
+    /** Stan odtwarzania PC („Kontynuuj z PC”) i stan sync39 – odczyt co tyle s (aplikacja na ekranie). */
+    var pcStateS by int("iv_pc_state_s", 30)
+    /** Polecenie pauzy od PC – sprawdzane co tyle s (gdy telefon gra). */
+    var cmdCheckS by int("iv_cmd_check_s", 10)
+    /** Zmiany z telefonu wysyłane po tylu s od ostatniej (kilka szybkich zmian – jeden plik). */
+    var pushDelayS by int("iv_push_delay_s", 20)
+    /** Synchronizacja w tle (Wi-Fi) co tyle godzin. */
+    var bgSyncHours by int("iv_bg_sync_h", 6)
+    /** Ostrzeżenie chmurki: PC (sync39) nie odzywa się od tylu dni. */
+    var pcSilentDays by int("iv_pc_silent_days", 3)
+    /** Ostrzeżenie chmurki: eksport biblioteki spóźniony o tyle godzin od zmiany w 39player. */
+    var exportLateHours by int("iv_export_late_h", 2)
     /** Zmiany nieprzyjęte przez PC do tego numeru użytkownik już widział („Ukryj”). */
     var rejectedSeen by long("rejected_seen", 0)
     var lastSyncAt by long("last_sync_at", 0)

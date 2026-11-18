@@ -223,8 +223,40 @@ class Daemon:
         self.last_full_mirror = 0.0
         self.started = time.time()
         self.cleaned_at = 0.0
+        self.cfg_mtime = self._cfg_mtime()
         self._pc_key = None
         self._pc_at = 0.0
+
+    # ------------------------------------------------------------------ ustawienia
+    def iv(self, key: str) -> float:
+        """Odstęp czasu z ustawień (sekundy, najmniej 1)."""
+        try:
+            return max(1.0, float(self.cfg.get(key, settings.DEFAULTS[key])))
+        except (TypeError, ValueError):
+            return float(settings.DEFAULTS[key])
+
+    def _cfg_mtime(self) -> float:
+        try:
+            return os.path.getmtime(self.cfg.get("_path") or settings.config_path())
+        except OSError:
+            return 0.0
+
+    def reload_settings(self) -> bool:
+        """Zmienione ustawienia (np. z 39player) – od razu, bez ponownego uruchomienia. Foldery – po restarcie."""
+        m = self._cfg_mtime()
+        if not m or m == self.cfg_mtime:
+            return False
+        self.cfg_mtime = m
+        try:
+            new = settings.load(self.cfg.get("_path"))
+        except (OSError, ValueError) as e:
+            log.warning("Ustawienia sync39 – nie wczytano zmian: %s", e)
+            return False
+        moved = [k for k in settings.RESTART_KEYS if (new.get(k) or "") != (self.cfg.get(k) or "")]
+        self.cfg = new
+        log.info("Wczytano zmienione ustawienia sync39%s", f" (foldery {', '.join(moved)} – po ponownym "
+                                                          f"uruchomieniu sync39)" if moved else "")
+        return True
 
     def _applied_mtime(self) -> float:
         if not self.sync_dir:
@@ -301,7 +333,7 @@ class Daemon:
     def phone_cycle(self) -> None:
         if not self.sync_dir or not reachable(self.sync_dir):
             return
-        if time.time() - self.cleaned_at > 3600:
+        if time.time() - self.cleaned_at > self.iv("tmp_max_age"):
             self.cleaned_at = time.time()
             self.clean_sync_dir()
         try:
@@ -317,7 +349,7 @@ class Daemon:
             self.sig_changed_at = now
         applied = self._applied_mtime()
         ack_needed = applied > self.applied_mtime
-        quiet = now - self.sig_changed_at >= 45
+        quiet = now - self.sig_changed_at >= self.iv("export_quiet")
         due = now - self.last_export >= float(self.cfg.get("export_min_interval", 600))
         if now < self.export_retry_at:
             return
@@ -325,7 +357,7 @@ class Daemon:
             set_status(state="export", message="Eksport biblioteki dla telefonu…")
             log.info("Eksport biblioteki dla telefonu")
             try:
-                rc = run_cli("export", timeout=int(self.cfg.get("export_timeout", EXPORT_TIMEOUT_S)))
+                rc = run_cli("export", timeout=int(self.iv("export_timeout")))
             except Exception as e:                                 # noqa: BLE001 – np. przekroczony czas; demon działa dalej
                 log.exception("Eksport dla telefonu: %s", e)
                 rc = -1
@@ -337,16 +369,17 @@ class Daemon:
                 self.export_retry_at = 0.0
                 set_status(state="idle", last_export=self.last_export, message="Biblioteka dla telefonu aktualna")
             else:
-                self.export_retry_at = self.last_export + EXPORT_RETRY_S
+                retry = self.iv("export_retry")
+                self.export_retry_at = self.last_export + retry
                 set_status(state="error", message="Eksport dla telefonu nie powiódł się – ponowna próba za "
-                                                  f"{EXPORT_RETRY_S // 60} min, zob. sync39.log")
+                                                  f"{max(1, round(retry / 60))} min, zob. sync39.log")
 
     def clean_sync_dir(self) -> int:
         """Pozostałości przerwanych zapisów w folderze synchronizacji (*.tmp starsze niż godzina) – kod 39player."""
         try:
             p39.add_path(self.cfg["player39_dir"])
             from player39 import droid_link
-            n = droid_link.clean_stale_tmp(self.sync_dir)
+            n = droid_link.clean_stale_tmp(self.sync_dir, self.iv("tmp_max_age"))
         except (Exception, SystemExit) as e:                       # noqa: BLE001 – stary 39player, brak NAS
             log.info("Sprzątanie folderu synchronizacji pominięte: %s", e)
             return 0
@@ -378,7 +411,7 @@ class Daemon:
         key = (st["state"], st["pending_deletions"], st["last_export"], st["last_mirror"],
                bool(st["export_pending_since"]))
         now = time.time()
-        if not force and key == self._pc_key and now - self._pc_at < PC_STATUS_EVERY_S:
+        if not force and key == self._pc_key and now - self._pc_at < self.iv("pc_status_interval"):
             return False
         if not reachable(self.sync_dir):
             return False
@@ -411,7 +444,8 @@ class Daemon:
         last_phone = 0.0
         try:
             while not self.stop.is_set():
-                timeout = 5 if pending_change else 30
+                self.reload_settings()
+                timeout = 5 if pending_change else min(30.0, self.iv("check_interval"))
                 if watcher is not None:
                     changed = watcher.wait(timeout)
                 else:
@@ -428,10 +462,11 @@ class Daemon:
                     log.info("39player: potwierdzono usunięcie %s plików z NAS", confirmed)
                     pending_change = False
                     self.mirror_cycle(confirmed_count=confirmed)
-                elif (pending_change and now - changed_at >= 20) or now - self.last_full_mirror > 1800:
+                elif (pending_change and now - changed_at >= self.iv("mirror_quiet")) or \
+                        now - self.last_full_mirror > self.iv("mirror_full_interval"):
                     pending_change = False
                     self.mirror_cycle()
-                if time.time() - last_phone >= 30:
+                if time.time() - last_phone >= self.iv("check_interval"):
                     last_phone = time.time()
                     self.phone_cycle()
                 self.publish_pc_status()

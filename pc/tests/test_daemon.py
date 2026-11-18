@@ -82,6 +82,26 @@ class DaemonConfirmTest(unittest.TestCase):
         self.d._pc_at -= daemon.PC_STATUS_EVERY_S + 1
         self.assertTrue(self.d.publish_pc_status())                  # co PC_STATUS_EVERY_S – znak życia
 
+    def test_settings_reload_live(self):
+        """Odstępy czasu z sync39.json – zmiana (np. z 39player) działa bez ponownego uruchomienia sync39."""
+        path = os.path.join(self.tmp, "sync39.json")
+
+        def write(data, ts):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            os.utime(path, (ts, ts))
+
+        self.d.cfg["_path"] = path
+        self.d.cfg_mtime = 0.0
+        write({"check_interval": 10, "mirror_full_interval": 600}, time.time() - 100)
+        self.assertTrue(self.d.reload_settings())
+        self.assertEqual((self.d.iv("check_interval"), self.d.iv("mirror_full_interval")), (10.0, 600.0))
+        self.assertEqual(self.d.iv("export_quiet"), 45.0)                # brak w pliku – domyślnie
+        self.assertFalse(self.d.reload_settings())                       # plik bez zmian
+        write({"check_interval": "zle", "export_retry": 0}, time.time())
+        self.assertTrue(self.d.reload_settings())
+        self.assertEqual((self.d.iv("check_interval"), self.d.iv("export_retry")), (30.0, 1.0))  # zła – domyślna, min. 1 s
+
     def test_guard_list_and_confirmation(self):
         self.d.mirror_cycle()
         self.assertEqual(self.status()["state"], "idle")

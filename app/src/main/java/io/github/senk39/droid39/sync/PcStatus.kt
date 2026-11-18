@@ -20,9 +20,9 @@ data class PcStatus(
     /** [serious] – coś wymaga działania (czerwony), inaczej informacja (żółty). */
     data class Warning(val text: String, val serious: Boolean)
 
-    fun warnings(nowMs: Long = System.currentTimeMillis()): List<Warning> {
+    fun warnings(nowMs: Long = System.currentTimeMillis(), staleMs: Long = STALE_MS, exportLateMs: Long = EXPORT_LATE_MS): List<Warning> {
         val age = nowMs - tsMs
-        if (age > STALE_MS) {
+        if (age > staleMs) {
             // stan sprzed kilku dni nic już nie mówi – tylko to, że PC (albo sync39) długo się nie odzywa
             return listOf(Warning("PC (sync39) nie odzywa się od ${ago(age)} – zmiany z telefonu i nowa biblioteka " +
                 "czekają, aż PC będzie włączony", serious = false))
@@ -34,7 +34,7 @@ data class PcStatus(
                     "(przycisk „NAS: … do usunięcia” na pasku stanu)", serious = true)
             "error" -> out += Warning("sync39 na PC: ${message.ifBlank { "błąd" }}", serious = true)
         }
-        if (exportPendingSinceMs > 0 && nowMs - exportPendingSinceMs > EXPORT_LATE_MS) {
+        if (exportPendingSinceMs > 0 && nowMs - exportPendingSinceMs > exportLateMs) {
             out += Warning("PC nie eksportował biblioteki od ${ago(nowMs - exportPendingSinceMs)} (biblioteka w 39player " +
                 "się zmieniła) – zob. dziennik sync39 na PC", serious = true)
         }
@@ -46,6 +46,10 @@ data class PcStatus(
         const val STALE_MS = 3L * 24 * 3600_000
         /** Eksport po zmianie biblioteki trwa zwykle kilkanaście minut (z ponowieniami) – dłużej to problem. */
         const val EXPORT_LATE_MS = 2L * 3600_000
+
+        /** Progi ostrzeżeń z ustawień telefonu (dni ciszy PC, godziny spóźnienia eksportu). */
+        fun limits(silentDays: Int, exportLateHours: Int): Pair<Long, Long> =
+            silentDays.coerceAtLeast(1) * 24 * 3600_000L to exportLateHours.coerceAtLeast(1) * 3600_000L
 
         fun parse(json: String?): PcStatus? {
             if (json.isNullOrBlank()) return null

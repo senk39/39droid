@@ -156,17 +156,17 @@ class LiveLink(
         while (currentCoroutineContext().isActive && (foreground || playing) && settings.nasConfigured) {
             val now = System.currentTimeMillis()
             if (!nas.recentlyFailed(60_000)) {
-                if (playing && now - lastCmd >= CMD_EVERY_MS) {
+                if (playing && now - lastCmd >= settings.cmdCheckS.coerceAtLeast(2) * 1000L) {
                     lastCmd = now
                     runCatching { checkCommand() }
                 }
-                if (foreground && (pcNow || now - lastPc >= PC_EVERY_MS)) {
+                if (foreground && (pcNow || now - lastPc >= settings.pcStateS.coerceAtLeast(5) * 1000L)) {
                     pcNow = false
                     lastPc = now
                     runCatching { refreshPc() }
                     runCatching { refreshPcStatus() }
                 }
-                if (now - lastSync >= SYNC_EVERY_MS) {
+                if (now - lastSync >= settings.syncCheckS.coerceAtLeast(10) * 1000L) {
                     lastSync = now
                     // w sieci komórkowej tylko zmiany i mały plik stanu; pełna biblioteka – przez Wi-Fi
                     runCatching { sync.quickSync(allowFull = !nas.metered()) }
@@ -313,10 +313,7 @@ class LiveLink(
     }
 
     companion object {
-        const val SYNC_EVERY_MS = 45_000L
         const val KV_PC_STATUS = "pc_status_json"
-        const val PC_EVERY_MS = 30_000L
-        const val CMD_EVERY_MS = 10_000L
         const val CMD_MAX_AGE_MS = 180_000L
         const val MAX_QUEUE = 5000
     }

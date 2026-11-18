@@ -39,6 +39,23 @@ DEFAULTS = {
     "art_quality": 82,
     # ile ostatnich migawek zostawić w folderze snapshot/
     "keep_snapshots": 2,
+    # odstępy czasu sync39 w tle (sekundy) – zmiany działają bez ponownego uruchomienia sync39
+    # zmiany w bibliotece 39player i zmiany z telefonu sprawdzane co tyle s
+    "check_interval": 30,
+    # eksport po zmianie biblioteki dopiero po tylu s bez kolejnych zmian (np. seria podpięć VocaDB)
+    "export_quiet": 45,
+    # po nieudanym eksporcie – ponowna próba po tylu s
+    "export_retry": 300,
+    # najdłuższy eksport (pierwszy tworzy miniatury wszystkich okładek)
+    "export_timeout": 10800,
+    # lustro: po zmianie w folderze muzyki – przebieg po tylu s ciszy
+    "mirror_quiet": 20,
+    # lustro: pełne porównanie folderu muzyki z NAS co tyle s
+    "mirror_full_interval": 1800,
+    # stan sync39 dla telefonu (state/pc-status.json) – odświeżany co tyle s (po zmianie stanu od razu)
+    "pc_status_interval": 300,
+    # pozostałości przerwanych zapisów (*.tmp) w folderze synchronizacji – usuwane, gdy starsze niż tyle s
+    "tmp_max_age": 3600,
     # jak uruchomić 39player w poleceniu „run” (puste – 39player.pyw albo exe\39player.exe z folderu projektu)
     "player39_command": [],
 }
@@ -73,6 +90,10 @@ def save(cfg: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(clean, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+
+
+# ustawienia wymagające ponownego uruchomienia sync39 w tle (reszta działa od razu)
+RESTART_KEYS = ("player39_dir", "sync_dir", "music_src", "music_dir")
 
 
 def require_sync_dir(cfg: dict) -> str:

@@ -290,7 +290,8 @@ private fun colorFor(kind: String) = when (kind) {
 private fun NasStatusIcon(nas: NasState) {
     val g = App.graph
     val pcStatus by g.live.pcStatus.collectAsState()
-    val warnings = pcStatus?.warnings().orEmpty()
+    val (stale, late) = io.github.senk39.droid39.sync.PcStatus.limits(g.settings.pcSilentDays, g.settings.exportLateHours)
+    val warnings = pcStatus?.warnings(System.currentTimeMillis(), stale, late).orEmpty()
     val (icon, color, desc) = when (val s = if (g.settings.nasConfigured) nas else NasState.NotConfigured) {
         // NAS działa, ale PC (sync39) wymaga uwagi – chmurka w kolorze ostrzeżenia z wykrzyknikiem
         is NasState.Online if warnings.isNotEmpty() -> Triple(Icons39.Cloud, if (warnings.any { it.serious }) C39.Warn else C39.Gold,

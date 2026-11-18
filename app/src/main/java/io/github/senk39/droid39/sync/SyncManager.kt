@@ -175,7 +175,7 @@ class SyncManager(
      * Wysłanie dziennika z opóźnieniem (zbiera kilka szybkich zmian w jeden plik). Po nieudanej próbie – ponowienie
      * po 30 s, 1, 2 i najwyżej 5 min; status pokazuje, co poszło nie tak i kiedy będzie następna próba.
      */
-    fun schedulePush(delayMs: Long = 20_000) {
+    fun schedulePush(delayMs: Long = settings.pushDelayS.coerceIn(0, 3600) * 1000L) {
         pushJob?.cancel()
         pushJob = scope.launch(Dispatchers.IO) {
             delay(delayMs)

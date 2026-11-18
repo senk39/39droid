@@ -130,11 +130,12 @@ object Jobs {
     private const val SYNC = "sync"
     private const val OFFLINE = "offline"
 
-    fun schedulePeriodicSync(context: Context) {
-        val req = PeriodicWorkRequestBuilder<SyncWorker>(6, TimeUnit.HOURS)
+    /** Synchronizacja w tle co [hours] godzin (Wi-Fi); zmiana odstępu podmienia zaplanowane zadanie. */
+    fun schedulePeriodicSync(context: Context, hours: Int = 6) {
+        val req = PeriodicWorkRequestBuilder<SyncWorker>(hours.coerceIn(1, 168).toLong(), TimeUnit.HOURS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(SYNC, ExistingPeriodicWorkPolicy.KEEP, req)
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(SYNC, ExistingPeriodicWorkPolicy.UPDATE, req)
     }
 
     fun startDownloads(context: Context, wifiOnly: Boolean) {
