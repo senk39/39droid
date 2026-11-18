@@ -114,6 +114,7 @@ fun SettingsScreen(section: String?) {
           // ------------------------------------------------------------------ NAS
           if (section == "nas") {
             NasStatusLine()
+            PcStatusBlock()
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Choice("SMB (udział sieciowy)", s.protocol == "smb") { s.protocol = "smb"; g.nas.invalidate() }
                 Choice("WebDAV", s.protocol == "webdav") { s.protocol = "webdav"; g.nas.invalidate() }
@@ -456,12 +457,15 @@ private fun SettingsHome() {
     val changes by s.changes.collectAsState()
     val nas by g.nas.state.collectAsState()
     val rejected by g.sync.rejected.collectAsState()
+    val pcStatus by g.live.pcStatus.collectAsState()
     val fmt = remember { SimpleDateFormat("d.MM.yyyy HH:mm", Locale.ROOT) }
-    val summary = remember(changes, nas, rejected) {
+    val summary = remember(changes, nas, rejected, pcStatus) {
+        val pcWarn = pcStatus?.warnings().orEmpty().size
         mapOf(
             "nas" to when {
                 !s.nasConfigured -> "Nie skonfigurowano"
-                nas is io.github.senk39.droid39.sync.NasState.Online -> "Połączono: ${(nas as io.github.senk39.droid39.sync.NasState.Online).label}"
+                nas is io.github.senk39.droid39.sync.NasState.Online -> "Połączono: ${(nas as io.github.senk39.droid39.sync.NasState.Online).label}" +
+                    (if (pcWarn > 0) " · PC wymaga uwagi" else "")
                 nas is io.github.senk39.droid39.sync.NasState.Offline -> "Niedostępny · ${s.hostList().joinToString(", ")}"
                 else -> s.hostList().joinToString(", ")
             },
@@ -498,6 +502,34 @@ private fun SettingsHome() {
             }
             Hint("39droid ${BuildConfig.VERSION_NAME} · urządzenie ${s.deviceId}\nMobilny port 39player. Edycja tagów i podpinanie VocaDB – w 39player na PC.")
         }
+    }
+}
+
+/** Stan sync39 na PC (state/pc-status.json): ostrzeżenia, ostatni kontakt, eksport biblioteki, lustro muzyki. */
+@Composable
+private fun PcStatusBlock() {
+    val g = App.graph
+    val st by g.live.pcStatus.collectAsState()
+    val fmt = remember { SimpleDateFormat("d.MM HH:mm", Locale.ROOT) }
+    val now = System.currentTimeMillis()
+    val s = st
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
+        Text("Komputer (sync39)", fontSize = 14.sp, color = C39.Text, fontWeight = FontWeight.SemiBold)
+        if (s == null) {
+            Text("Brak wieści z PC – sync39 w tle jeszcze nie zapisał stanu na NAS (albo działa w starszej wersji).",
+                fontSize = 12.sp, color = C39.Text3)
+            return@Column
+        }
+        for (w in s.warnings(now)) {
+            Text(w.text, fontSize = 13.sp, color = if (w.serious) C39.Warn else C39.Gold, modifier = Modifier.padding(top = 2.dp))
+        }
+        val lines = buildList {
+            add("Ostatni kontakt: ${fmt.format(Date(s.tsMs))} (${io.github.senk39.droid39.sync.PcStatus.ago(now - s.tsMs)} temu)" +
+                (s.message.takeIf { it.isNotBlank() && s.state !in setOf("error", "waiting_confirmation") }?.let { " – $it" } ?: ""))
+            if (s.lastExportMs > 0) add("Biblioteka dla telefonu sprawdzona: ${fmt.format(Date(s.lastExportMs))}")
+            if (s.mirror && s.lastMirrorMs > 0) add("Lustro muzyki na NAS: ${fmt.format(Date(s.lastMirrorMs))}")
+        }
+        Text(lines.joinToString("\n"), fontSize = 12.sp, color = C39.Text2, modifier = Modifier.padding(top = 2.dp))
     }
 }
 

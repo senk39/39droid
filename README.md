@@ -197,6 +197,11 @@ Pełna biblioteka jest publikowana tylko po zmianach w części rzadko zmieniane
 i nakłada go na nią – także przez sieć komórkową; pełna biblioteka w sieci komórkowej czeka na Wi-Fi (chyba że
 użytkownik sam wybierze „Synchronizuj teraz”).
 
+sync39 w tle zapisuje swój stan także na NAS (`39sync/state/pc-status.json`, od razu po zmianie, poza tym co 5 min).
+Chmurka obok nazwy 39droid robi się żółta albo czerwona z wykrzyknikiem, gdy PC wymaga uwagi: lustro muzyki czeka na
+potwierdzenie usunięcia, eksport biblioteki się nie udał albo nie powstał w ciągu 2 godzin od zmiany w 39player, sync39
+zgłasza błąd, albo PC nie odzywa się od ponad 3 dni. Szczegóły: dotknięcie chmurki → Komputer (sync39).
+
 Testy: `cd pc && python -m unittest discover -s tests -v` (działają na kopii danych 39player).
 
 ## Simple Scrobbler

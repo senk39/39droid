@@ -173,6 +173,10 @@ class Sync39Test(unittest.TestCase):
 
         time.sleep(1.1)                                    # inna chwila utworzenia i inna nazwa pliku
         snapshot.build(self.lib, self.cfg, b, {"dev": {"seq": 3}}, log=quiet)
+        con = sqlite3.connect(b)                           # nowa wersja 39player / sync39 – treść ta sama
+        con.execute("UPDATE info SET value = 'nowa' WHERE key IN ('player39_version', 'generator')")
+        con.commit()
+        con.close()
         self.assertEqual(publish(sync, b, work, 1, {"dev": {"seq": 3}}, {}, log=quiet), "none")
 
         snapshot.build(self.lib, self.cfg, c, {"dev": {"seq": 4}}, log=quiet)

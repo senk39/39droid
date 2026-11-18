@@ -49,6 +49,39 @@ class DaemonConfirmTest(unittest.TestCase):
         with open(settings.state_file(daemon.CONFIRM_FILE), "w", encoding="utf-8") as f:
             json.dump({"ts": time.time(), "count": count}, f)
 
+    def test_pc_status_for_phone(self):
+        """Stan dla telefonu w <sync_dir>/state/pc-status.json: od razu po zmianie stanu (lustro czeka na potwierdzenie,
+        eksport zaległy), bez zmian – nie częściej niż co PC_STATUS_EVERY_S."""
+        sync = os.path.join(self.tmp, "39sync")
+        os.makedirs(sync)
+        self.d.sync_dir = sync
+        path = os.path.join(sync, "state", daemon.PC_STATUS_FILE)
+
+        def pc():
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+
+        self.d.mirror_cycle()
+        self.d.force_export = False
+        self.assertTrue(self.d.publish_pc_status())
+        st = pc()
+        self.assertEqual((st["state"], st["pending_deletions"], st["export_pending_since"]), ("idle", 0, 0))
+        self.assertGreater(st["last_mirror"], 0)
+        self.assertAlmostEqual(st["ts"], time.time(), delta=5)
+        self.assertNotIn(self.src, json.dumps(st))                   # bez ścieżek PC
+        self.assertFalse(self.d.publish_pc_status())                 # bez zmian – później
+
+        shutil.rmtree(os.path.join(self.src, "A1"))
+        self.d.mirror_cycle()
+        self.assertTrue(self.d.publish_pc_status())                  # zmiana stanu – od razu
+        self.assertEqual((pc()["state"], pc()["pending_deletions"]), ("waiting_confirmation", 20))
+
+        self.d.seen_sig, self.d.exported_sig, self.d.sig_changed_at = 5.0, 1.0, 1234.0
+        self.assertTrue(self.d.publish_pc_status())                  # biblioteka zmieniona, eksportu brak
+        self.assertEqual(pc()["export_pending_since"], 1234.0)
+        self.d._pc_at -= daemon.PC_STATUS_EVERY_S + 1
+        self.assertTrue(self.d.publish_pc_status())                  # co PC_STATUS_EVERY_S – znak życia
+
     def test_guard_list_and_confirmation(self):
         self.d.mirror_cycle()
         self.assertEqual(self.status()["state"], "idle")

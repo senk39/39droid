@@ -415,6 +415,9 @@ def build_state(full_path: str, out_path: str) -> None:
         con.close()
 
 
+INFO_VOLATILE = ("created", "generator", "player39_version")
+
+
 def fingerprint(path: str, skip_tables=(), skip_columns: dict | None = None) -> str:
     """Skrót treści migawki bez chwili utworzenia – ta sama treść daje ten sam skrót (eksport bez zmian nie jest
     publikowany, więc telefon nie pobiera drugi raz tego samego). `skip_tables` / `skip_columns` – części pominięte."""
@@ -427,8 +430,10 @@ def fingerprint(path: str, skip_tables=(), skip_columns: dict | None = None) -> 
                 continue
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{t}")') if r[1] not in skip_columns.get(t, ())]
             h.update(repr((t, cols)).encode("utf-8"))
+            # info: chwila utworzenia i wersje programów nie zmieniają treści (nowa wersja 39player nie może
+            # wymuszać pobrania całej biblioteki na telefonie)
             q = f'SELECT {", ".join(chr(34) + c + chr(34) for c in cols)} FROM "{t}"' + (
-                " WHERE key <> 'created'" if t == "info" else "")
+                f" WHERE key NOT IN ({', '.join(repr(k) for k in INFO_VOLATILE)})" if t == "info" else "")
             for row in con.execute(q):
                 h.update(repr(row).encode("utf-8"))
     finally:

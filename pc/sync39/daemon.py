@@ -7,7 +7,8 @@ jest zamknięty – zmiany z telefonu.
     zastosowaniu zmian z telefonu szybciej (telefon czeka na potwierdzenie),
   * zmiany z telefonu przy zamkniętym 39player – tu; przy działającym – stosuje je sam 39player.
 Stan: ~/.39sync/status.json (czyta go 39player – pasek stanu, menu Narzędzia → Telefon), dziennik: sync39.log
-w tym samym folderze. Usunięcia wstrzymane przez zabezpieczenie: lista w pending-deletions.txt, potwierdzenie
+w tym samym folderze. Kopia stanu dla telefonu: <sync_dir>/state/pc-status.json (39droid ostrzega, gdy PC długo się
+nie odzywa, eksport się nie udaje albo lustro czeka na potwierdzenie usunięcia). Usunięcia wstrzymane przez zabezpieczenie: lista w pending-deletions.txt, potwierdzenie
 z 39player (confirm-deletions.json) albo python -m sync39 mirror --confirm."""
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import sys
 import threading
 import time
 
-from . import inbox, mirror, p39, settings
+from . import VERSION, inbox, mirror, p39, settings
 
 log = logging.getLogger("sync39")
 _status: dict = {}
@@ -182,6 +183,8 @@ PENDING_FILE = "pending-deletions.txt"
 EXPORT_TIMEOUT_S = 3 * 3600          # pierwszy eksport tworzy miniatury wszystkich okładek
 EXPORT_RETRY_S = 300                 # po nieudanym eksporcie – nie częściej (każda próba kopiuje bazę 39player)
 HEARTBEAT_S = 30                     # znak życia w status.json (39player uznaje sync39 za działający do 180 s)
+PC_STATUS_FILE = "pc-status.json"    # stan dla telefonu w <sync_dir>/state/
+PC_STATUS_EVERY_S = 300              # odświeżenie na NAS co tyle s (od razu – gdy zmieni się stan, eksport, lustro)
 
 
 def take_confirmation() -> int | None:
@@ -218,6 +221,9 @@ class Daemon:
         self.force_export = True                                   # pierwszy eksport po starcie
         self.export_retry_at = 0.0
         self.last_full_mirror = 0.0
+        self.started = time.time()
+        self._pc_key = None
+        self._pc_at = 0.0
 
     def _applied_mtime(self) -> float:
         if not self.sync_dir:
@@ -331,6 +337,46 @@ class Daemon:
                 set_status(state="error", message="Eksport dla telefonu nie powiódł się – ponowna próba za "
                                                   f"{EXPORT_RETRY_S // 60} min, zob. sync39.log")
 
+    # ------------------------------------------------------------------ stan dla telefonu
+    def pc_status(self) -> dict:
+        """Stan sync39 dla 39droid (bez ścieżek PC i postępu – tylko to, co telefon pokazuje)."""
+        with _status_lock:
+            st = dict(_status)
+        pending_export = self.seen_sig > self.exported_sig or self.force_export
+        return {
+            "format": 1, "generator": f"sync39 {VERSION}", "ts": time.time(), "started": self.started,
+            "state": st.get("state") or "", "message": st.get("message") or "", "reason": st.get("reason") or "",
+            "pending_deletions": int(st.get("pending_deletions") or 0),
+            "last_mirror": st.get("last_mirror") or 0, "last_export": st.get("last_export") or 0,
+            # od kiedy biblioteka 39player zmieniła się bez nowego eksportu dla telefonu (0 – eksport aktualny)
+            "export_pending_since": (self.sig_changed_at or self.started) if pending_export else 0,
+            "mirror": bool(self.src and self.dst),
+        }
+
+    def publish_pc_status(self, force: bool = False) -> bool:
+        """<sync_dir>/state/pc-status.json – od razu po zmianie stanu, poza tym co PC_STATUS_EVERY_S."""
+        if not self.sync_dir:
+            return False
+        st = self.pc_status()
+        key = (st["state"], st["pending_deletions"], st["last_export"], st["last_mirror"],
+               bool(st["export_pending_since"]))
+        now = time.time()
+        if not force and key == self._pc_key and now - self._pc_at < PC_STATUS_EVERY_S:
+            return False
+        if not reachable(self.sync_dir):
+            return False
+        path = os.path.join(self.sync_dir, "state", PC_STATUS_FILE)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(st, f, ensure_ascii=False)
+            os.replace(path + ".tmp", path)
+        except OSError as e:
+            log.warning("Stan dla telefonu (%s): %s", PC_STATUS_FILE, e)
+            return False
+        self._pc_key, self._pc_at = key, now
+        return True
+
     # ------------------------------------------------------------------ pętla
     def _heartbeat(self) -> None:
         """Znak życia także w trakcie długich operacji (pierwszy skan NAS, eksport wszystkich okładek)."""
@@ -371,11 +417,16 @@ class Daemon:
                 if time.time() - last_phone >= 30:
                     last_phone = time.time()
                     self.phone_cycle()
+                self.publish_pc_status()
         finally:
             self.stop.set()                                        # koniec znaku życia
             if watcher is not None:
                 watcher.close()
             set_status(state="stopped", message="Zatrzymano")
+            try:
+                self.publish_pc_status(force=True)
+            except Exception:                                      # noqa: BLE001 – zamykanie
+                pass
 
 
 def main(console: bool = True) -> int:

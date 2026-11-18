@@ -289,13 +289,24 @@ private fun colorFor(kind: String) = when (kind) {
 @Composable
 private fun NasStatusIcon(nas: NasState) {
     val g = App.graph
+    val pcStatus by g.live.pcStatus.collectAsState()
+    val warnings = pcStatus?.warnings().orEmpty()
     val (icon, color, desc) = when (val s = if (g.settings.nasConfigured) nas else NasState.NotConfigured) {
+        // NAS działa, ale PC (sync39) wymaga uwagi – chmurka w kolorze ostrzeżenia z wykrzyknikiem
+        is NasState.Online if warnings.isNotEmpty() -> Triple(Icons39.Cloud, if (warnings.any { it.serious }) C39.Warn else C39.Gold,
+            "NAS: połączono · PC: " + warnings.joinToString(" · ") { it.text })
         is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${s.label})")
         is NasState.Offline -> Triple(Icons39.CloudOff, C39.Warn, "NAS niedostępny")
         NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold, "NAS nie jest skonfigurowany")
         NasState.Unknown -> Triple(Icons39.Cloud, C39.Text3, "NAS: jeszcze nie sprawdzono")
     }
-    SmallIconButton(icon, desc, tint = color, size = 22.dp) { Nav.go(Route.SettingsSection("nas")) }
+    Box {
+        SmallIconButton(icon, desc, tint = color, size = 22.dp) { Nav.go(Route.SettingsSection("nas")) }
+        if (nas is NasState.Online && warnings.isNotEmpty()) {
+            Text("!", Modifier.align(Alignment.Center).padding(top = 2.dp), color = C39.Surface, fontSize = 12.sp,
+                fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 @Composable

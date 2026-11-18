@@ -103,6 +103,10 @@ class LiveLink(
 ) {
     private val _pc = MutableStateFlow<DeviceState?>(null)
     val pc: StateFlow<DeviceState?> = _pc
+    private val _pcStatus = MutableStateFlow<PcStatus?>(null)
+
+    /** Stan sync39 na PC (state/pc-status.json) – ostrzeżenia przy chmurce; ostatni znany także po restarcie. */
+    val pcStatus: StateFlow<PcStatus?> = _pcStatus
     @Volatile private var foreground = false
     @Volatile private var playing = false
     @Volatile private var pcNow = false
@@ -160,6 +164,7 @@ class LiveLink(
                     pcNow = false
                     lastPc = now
                     runCatching { refreshPc() }
+                    runCatching { refreshPcStatus() }
                 }
                 if (now - lastSync >= SYNC_EVERY_MS) {
                     lastSync = now
@@ -181,6 +186,23 @@ class LiveLink(
             return@withContext null
         }
         DeviceState.parse(JSONObject(String(bytes, Charsets.UTF_8))).also { _pc.value = it }
+    }
+
+    init {
+        scope.launch(Dispatchers.IO) { runCatching { _pcStatus.value = PcStatus.parse(library.local.get(KV_PC_STATUS)) } }
+    }
+
+    /** Odczyt state/pc-status.json (brak pliku – sync39 sprzed tej wersji: bez ostrzeżeń). */
+    suspend fun refreshPcStatus(): PcStatus? = withContext(Dispatchers.IO) {
+        val json = try {
+            String(nas.use { it.read(statePath("pc-status.json")) }, Charsets.UTF_8)
+        } catch (e: FileNotFoundException) {
+            return@withContext null
+        }
+        val st = PcStatus.parse(json) ?: return@withContext null
+        library.local.put(KV_PC_STATUS, json)
+        _pcStatus.value = st
+        st
     }
 
     /** Kolejka innego urządzenia jako utwory tej biblioteki: (utwory, indeks bieżącego). */
@@ -306,6 +328,7 @@ class LiveLink(
 
     companion object {
         const val SYNC_EVERY_MS = 45_000L
+        const val KV_PC_STATUS = "pc_status_json"
         const val PC_EVERY_MS = 30_000L
         const val CMD_EVERY_MS = 10_000L
         const val CMD_MAX_AGE_MS = 180_000L
