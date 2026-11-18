@@ -37,4 +37,6 @@ interface RemoteFs : Closeable {
 }
 
 class RemoteNotConfigured : Exception("Nie skonfigurowano połączenia z NAS (Ustawienia → NAS)")
-class RemoteUnavailable(msg: String, cause: Throwable? = null) : Exception(msg, cause)
+open class RemoteUnavailable(msg: String, cause: Throwable? = null) : Exception(msg, cause)
+/** Pod adresem NAS odpowiada inny serwer (np. obca sieć Wi-Fi z tym samym adresem) – dane logowania nie zostały wysłane. */
+class ServerMismatch(msg: String) : RemoteUnavailable(msg)

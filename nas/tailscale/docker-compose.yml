@@ -1,0 +1,45 @@
+# Tailscale na NAS (UGOS Pro → Docker → Projekt): dostęp do muzyki z 39droid poza domem.
+#
+# Co udostępnia: wyłącznie SMB (port 445) NAS-a, i to tylko urządzeniom z Twojej sieci Tailscale (szyfrowany
+# WireGuard, bez otwierania portów na routerze). Panel UGOS, SSH i inne usługi NAS-a NIE są dostępne przez Tailscale.
+#
+# Zabezpieczenia kontenera: tryb userspace (bez urządzenia TUN i bez uprawnień NET_ADMIN), wszystkie capabilities
+# odebrane, system plików tylko do odczytu, stan (klucz węzła) w wolumenie Dockera – nie w udostępnionym folderze.
+#
+# Pierwsze uruchomienie: w logach kontenera pojawi się link „To authenticate, visit: https://login.tailscale.com/…”
+# – otwórz go i zaloguj się na swoje konto Tailscale (wcześniej ustaw politykę z tailnet-policy.hujson).
+configs:
+  serve:
+    content: |
+      {"TCP": {"445": {"TCPForward": "127.0.0.1:445"}}}
+
+services:
+  tailscale:
+    image: tailscale/tailscale:v1.104.7
+    container_name: tailscale-39
+    network_mode: host                      # 127.0.0.1:445 = Samba NAS-a; Tailscale działa w userspace, bez TUN
+    environment:
+      TS_HOSTNAME: nas-39
+      TS_USERSPACE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SOCKET: /tmp/tailscaled.sock
+      TS_AUTH_ONCE: "true"                  # loguje się tylko raz, potem używa zapisanego stanu
+      TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve.json   # tylko przekazywanie TCP 445 → Samba
+      TS_EXTRA_ARGS: --advertise-tags=tag:nas
+    configs:
+      - source: serve
+        target: /config/serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    tmpfs:
+      - /tmp
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:

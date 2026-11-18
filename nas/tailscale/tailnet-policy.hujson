@@ -1,0 +1,16 @@
+// Polityka dostępu Tailscale (login.tailscale.com → Access controls → wklej całość i zapisz)
+// PRZED pierwszym uruchomieniem kontenera – bez „tagOwners” NAS nie dostanie tagu tag:nas.
+//
+//  * Twoje urządzenia (telefon, PC) mogą łączyć się z NAS-em tylko na port 445 (SMB).
+//  * NAS (tag:nas) nie może łączyć się z niczym – nawet przejęty kontener nie sięgnie do telefonu ani PC.
+//  * Twoje urządzenia osobiste nadal widzą się nawzajem (jak domyślnie).
+{
+	"tagOwners": {
+		"tag:nas": ["autogroup:admin"],
+	},
+	"grants": [
+		{"src": ["autogroup:member"], "dst": ["tag:nas"], "ip": ["tcp:445"]},
+		{"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]},
+	],
+	"ssh": [],
+}

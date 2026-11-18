@@ -69,6 +69,8 @@ class Settings(context: Context) {
     /** Folder synchronizacji w udziale, np. „39sync”. */
     var syncPath by str("nas_sync_path", "39sync")
     var user by str("nas_user", "")
+    /** Identyfikator serwera SMB zapamiętany przy pierwszym udanym połączeniu (ochrona hasła w obcych sieciach). */
+    var nasServerGuid by str("nas_server_guid", "")
     private var passwordEnc by str("nas_password", "")
     var password: String
         get() = Secrets.decrypt(passwordEnc)

@@ -28,7 +28,14 @@ import java.io.InputStream
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 
-/** Udział SMB2/3 (smbj). Jedno połączenie wielokrotnego użytku, odnawiane po zerwaniu. */
+/**
+ * Udział SMB2/3 (smbj). Jedno połączenie wielokrotnego użytku, odnawiane po zerwaniu.
+ *
+ * Bezpieczeństwo poza domem: pod adresem z LAN (np. 192.168.1.20) w obcej sieci Wi-Fi może odpowiadać inny serwer,
+ * który przechwyciłby odpowiedź NTLM. Dlatego identyfikator serwera (ServerGuid z negocjacji – przed logowaniem)
+ * jest zapamiętywany przy pierwszym udanym połączeniu i sprawdzany przed każdym wysłaniem danych logowania.
+ * Transmisja jest szyfrowana (SMB 3), gdy serwer to obsługuje.
+ */
 @UnstableApi
 class SmbFs(
     private val host: String,
@@ -36,6 +43,10 @@ class SmbFs(
     private val shareName: String,
     private val user: String,
     private val password: String,
+    /** Zapamiętany identyfikator serwera („” – jeszcze żaden). */
+    private val pinnedGuid: String = "",
+    /** Wywoływane po pierwszym udanym logowaniu z identyfikatorem do zapamiętania. */
+    private val onFirstGuid: (String) -> Unit = {},
 ) : RemoteFs {
 
     override val label: String = "smb://$host${if (port != 445 && port > 0) ":$port" else ""}/$shareName"
@@ -46,6 +57,7 @@ class SmbFs(
             .withAuthenticators(NtlmAuthenticator.Factory())
             .withMultiProtocolNegotiate(true)
             .withDfsEnabled(false)
+            .withEncryptData(true)                              // SMB 3: szyfrowanie, gdy serwer je obsługuje
             .withTimeout(30, TimeUnit.SECONDS)
             .withSoTimeout(45, TimeUnit.SECONDS)
             .build()
@@ -60,6 +72,12 @@ class SmbFs(
         closeQuietly()
         try {
             val c = client.connect(host, if (port > 0) port else SMBClient.DEFAULT_PORT)
+            val guid = c.connectionContext.serverGuid?.toString().orEmpty()
+            if (pinnedGuid.isNotEmpty() && !guid.equals(pinnedGuid, ignoreCase = true)) {
+                runCatching { c.close() }
+                throw ServerMismatch("Pod adresem $host odpowiada inny serwer niż Twój NAS – nie wysłano hasła. " +
+                    "Jeśli to na pewno Twój NAS (np. po zmianie nazwy), w domu użyj „Zapomnij tożsamość NAS”.")
+            }
             val auth = if (user.isBlank()) AuthenticationContext.guest()
             else {
                 val (domain, name) = if ('\\' in user) user.substringBefore('\\') to user.substringAfter('\\') else "" to user
@@ -69,6 +87,7 @@ class SmbFs(
             val d = s.connectShare(shareName) as? DiskShare
                 ?: throw RemoteUnavailable("„$shareName” nie jest udziałem plików")
             connection = c; session = s; disk = d
+            if (pinnedGuid.isEmpty() && guid.isNotEmpty()) onFirstGuid(guid)
             return d
         } catch (e: RemoteUnavailable) {
             throw e

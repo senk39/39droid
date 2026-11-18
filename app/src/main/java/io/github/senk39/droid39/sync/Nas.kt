@@ -43,7 +43,8 @@ class Nas(private val context: Context, private val settings: Settings) {
 
     private fun create(host: String): RemoteFs = if (settings.protocol == "webdav")
         WebDavFs(host, settings.port, settings.https, settings.share, settings.user, settings.password)
-    else SmbFs(host, settings.port, settings.share.trim('/', '\\'), settings.user, settings.password)
+    else SmbFs(host, settings.port, settings.share.trim('/', '\\'), settings.user, settings.password,
+        settings.nasServerGuid) { guid -> settings.nasServerGuid = guid }
 
     /** Aktywne połączenie (łączy się w razie potrzeby). Nie wołać z wątku głównego. */
     @Synchronized

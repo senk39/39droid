@@ -113,11 +113,26 @@ z NAS. Gdy NAS zacznie działać, migawka z NAS zastąpi wczytany plik.
 3. Telefon łączy się przez **SMB** (to, co już działa w LAN) albo **WebDAV** (Panel sterowania → Usługi plików →
    WebDAV; porty 5005 HTTP / 5006 HTTPS). Konto: najlepiej osobny użytkownik NAS tylko do odczytu muzyki
    i zapisu w `39sync`.
-4. **Poza domem**: Ugreen Link obsługuje tylko aplikacje UGREEN, więc do dostępu z zewnątrz zalecany jest
-   **Tailscale** (aplikacja w Centrum aplikacji UGOS Pro albo kontener Docker + aplikacja Tailscale na telefonie).
-   W ustawieniach 39droid wpisz adresy po przecinku: najpierw LAN (np. `192.168.1.20`), potem nazwę z Tailscale
-   (np. `dxp4800plus.tail1234.ts.net`) – aplikacja użyje pierwszego, który odpowiada. NAS nie musi być wystawiony
-   do internetu.
+4. **Poza domem – Tailscale** (Ugreen Link obsługuje tylko aplikacje UGREEN). Nic nie jest wystawiane do
+   internetu ani przekierowywane na routerze; ruch idzie szyfrowanym WireGuardem tylko między Twoimi urządzeniami.
+   1. Konto na [tailscale.com](https://tailscale.com) → **Access controls** → wklej
+      [`nas/tailscale/tailnet-policy.hujson`](nas/tailscale/tailnet-policy.hujson) (telefon i PC → NAS tylko
+      port 445; NAS nie może łączyć się z niczym).
+   2. UGOS Pro → **Docker → Projekt → Utwórz**, wklej
+      [`nas/tailscale/docker-compose.yml`](nas/tailscale/docker-compose.yml), uruchom. W logach kontenera
+      `tailscale-39` otwórz link logowania. Kontener udostępnia przez Tailscale **wyłącznie SMB** (bez panelu UGOS,
+      SSH itd.), działa bez uprawnień (userspace, `cap_drop: ALL`, system plików tylko do odczytu), a klucz węzła
+      trzyma w wolumenie Dockera – nie w udostępnionym folderze.
+   3. Telefon: aplikacja **Tailscale** z Google Play, to samo konto. W 39droid w polu adresów dopisz po przecinku
+      adres NAS-a z Tailscale (`100.x.y.z` z listy Machines albo `nas-39.<tailnet>.ts.net`):
+      `192.168.1.20, 100.x.y.z` – w domu odpowiada LAN, poza domem Tailscale.
+   4. Android pozwala na **jedną aplikację VPN naraz** – gdy działa Tailscale, inny VPN (np. Proton VPN) jest
+      wyłączony.
+
+   Ochrona hasła w obcych sieciach: 39droid zapamiętuje tożsamość serwera SMB przy pierwszym połączeniu w domu i nie
+   loguje się do innego serwera pod adresem `192.168.1.20` (np. w hotelowym Wi-Fi). Transmisja SMB jest szyfrowana
+   (SMB 3). Zalecane jest osobne konto NAS dla telefonu z długim losowym hasłem i dostępem tylko do `Music` i
+   `39sync`.
 
 W aplikacji: **Ustawienia → NAS** (protokół, adresy, udział, foldery muzyki i synchronizacji, użytkownik, hasło –
 szyfrowane kluczem z Android Keystore) → **Testuj połączenie** → **Synchronizuj teraz**. Dla

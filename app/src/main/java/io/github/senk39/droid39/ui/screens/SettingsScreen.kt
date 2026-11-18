@@ -106,6 +106,17 @@ fun SettingsScreen() {
                 s.port = it.toIntOrNull() ?: 0; g.nas.invalidate()
             }
             if (s.protocol == "webdav") Toggle("HTTPS (port 5006)", "Wymaga certyfikatu zaufanego przez Androida", s.https) { s.https = it; g.nas.invalidate() }
+            if (s.protocol == "smb") {
+                var guid by remember { mutableStateOf(s.nasServerGuid) }
+                Text(
+                    if (guid.isEmpty()) "Tożsamość NAS: zostanie zapamiętana przy pierwszym połączeniu (połącz się w domu)."
+                    else "Tożsamość NAS zapamiętana – hasło nie trafi do innego serwera pod tym samym adresem (np. w obcej sieci Wi-Fi).",
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = C39.Text3
+                )
+                if (guid.isNotEmpty()) Row(Modifier.padding(horizontal = 16.dp)) {
+                    Button39("Zapomnij tożsamość NAS") { s.nasServerGuid = ""; guid = ""; g.nas.invalidate() }
+                }
+            }
             var test by remember { mutableStateOf<String?>(null) }
             var lanGranted by remember { mutableStateOf(Permissions.localNetworkGranted(ctx)) }
             val lanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
