@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">39droid</string>
+    <string name="widget_player">39droid – odtwarzacz</string>
+    <string name="widget_cover">39droid – duża okładka</string>
+    <string name="widget_bar">39droid – pasek</string>
+    <string name="widget_player_desc">Okładka, tytuł, kompozytor i wokaliści (Vocaloid) albo wykonawca, przyciski odtwarzania</string>
+    <string name="widget_cover_desc">Duża okładka nad tytułem i przyciskami</string>
+    <string name="widget_bar_desc">Wąski pasek: okładka, tytuł i przyciski</string>
 </resources>

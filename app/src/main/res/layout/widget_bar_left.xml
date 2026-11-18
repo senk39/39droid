@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widżet 39droid w niskim rozmiarze (pasek) – okładka po lewej, tekst, przyciski obok tekstu. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/w_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_solid" android:scaleType="fitXY" android:clipToOutline="true"
+        android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="horizontal" android:paddingStart="8dp" android:paddingEnd="6dp"
+        android:paddingTop="6dp" android:paddingBottom="6dp" android:gravity="center_vertical">
+        <ImageView android:id="@+id/w_art" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:maxWidth="80dp" android:maxHeight="80dp" android:adjustViewBounds="true" android:scaleType="centerCrop"
+            android:clipToOutline="true" android:src="@drawable/widget_art_placeholder" android:contentDescription="Okładka" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:layout_marginStart="10dp" android:layout_marginEnd="4dp">
+            <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:maxLines="1" android:ellipsize="end" android:textSize="15sp" android:textColor="#FFFFFFFF"
+                android:text="39droid" />
+            <TextView android:id="@+id/w_line2" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:maxLines="1" android:ellipsize="end" android:textSize="12sp" android:textColor="#FFB4B9C1"
+                android:text="Nic nie gra" />
+            <TextView android:id="@+id/w_line3" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:maxLines="1" android:ellipsize="end" android:textSize="11sp" android:textColor="#FFB4B9C1"
+                android:visibility="gone" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/w_buttons" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:gravity="center_vertical" android:orientation="horizontal">
+            <ImageView android:id="@+id/w_prev" android:layout_width="36dp" android:layout_height="36dp"
+                android:padding="8dp" android:src="@drawable/ic_w_prev" android:contentDescription="Poprzedni" />
+            <ImageView android:id="@+id/w_play" android:layout_width="42dp" android:layout_height="42dp"
+                android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
+                android:padding="10dp" android:src="@drawable/ic_w_play" android:contentDescription="Odtwórz / pauza" />
+            <ImageView android:id="@+id/w_next" android:layout_width="36dp" android:layout_height="36dp"
+                android:padding="8dp" android:src="@drawable/ic_w_next" android:contentDescription="Następny" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -423,6 +423,7 @@ fun SettingsScreen(section: String?) {
             }
             Spacer(Modifier.height(8.dp))
             Toggle("Kolor akcentu z okładki", "Jak w PowerAmp – kolor przycisków i pasków wg okładki odtwarzanego utworu", s.accentFromArt) { s.accentFromArt = it }
+            WidgetsBlock()
             Hint("Przeciągnij palcem w prawo (od lewej połowy ekranu), aby wrócić do poprzedniego ekranu.")
           }
 
@@ -505,6 +506,39 @@ private fun SettingsHome() {
             Hint("39droid ${BuildConfig.VERSION_NAME} · urządzenie ${s.deviceId}\nMobilny port 39player. Edycja tagów i podpinanie VocaDB – w 39player na PC.")
         }
     }
+}
+
+/** Widżety na ekranie głównym: dodanie nowego i wygląd każdego z umieszczonych. */
+@Composable
+private fun WidgetsBlock() {
+    val ctx = LocalContext.current
+    val placed = remember { io.github.senk39.droid39.widget.PlayerWidget.placed(ctx) }
+    Text("Widżety na ekranie głównym", Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp), fontSize = 16.sp)
+    val names = mapOf("player" to "Odtwarzacz", "cover" to "Duża okładka", "bar" to "Pasek")
+    val providers = mapOf("player" to io.github.senk39.droid39.widget.PlayerWidget::class.java,
+        "cover" to io.github.senk39.droid39.widget.PlayerWidgetCover::class.java,
+        "bar" to io.github.senk39.droid39.widget.PlayerWidgetBar::class.java)
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((kind, label) in names) {
+            Button39("Dodaj: $label", outlined = true) {
+                val m = android.appwidget.AppWidgetManager.getInstance(ctx)
+                if (m.isRequestPinAppWidgetSupported) m.requestPinAppWidget(android.content.ComponentName(ctx, providers.getValue(kind)), null, null)
+            }
+        }
+    }
+    placed.forEachIndexed { i, (id, kind) ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${names[kind] ?: kind} #${i + 1}", Modifier.weight(1f), fontSize = 14.sp, color = C39.Text2)
+            Button39("Dostosuj wygląd") {
+                ctx.startActivity(android.content.Intent(ctx, io.github.senk39.droid39.widget.WidgetConfigActivity::class.java)
+                    .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id))
+            }
+        }
+    }
+    Hint(if (placed.isEmpty()) "Widżet dodasz też z ekranu głównego (przytrzymaj puste miejsce → Widżety → 39droid)."
+    else "Wygląd zmienisz też, przytrzymując widżet na ekranie głównym → Ustawienia widżetu.")
 }
 
 /** Odstępy czasu synchronizacji telefonu i progi ostrzeżeń chmurki (odstępy sync39 na PC – w 39player). */
@@ -719,7 +753,7 @@ private fun ManagedReviewDialog(onClose: () -> Unit) {
 }
 
 @Composable
-private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
     val accent = LocalAccent.current
     // jak w PowerAmp: wybrana opcja wypełniona akcentem, pozostałe obrysowane
     Text(
@@ -731,7 +765,7 @@ private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Button39(label: String, outlined: Boolean = false, onClick: () -> Unit) {
+internal fun Button39(label: String, outlined: Boolean = false, onClick: () -> Unit) {
     val accent = LocalAccent.current
     Text(
         label, Modifier.clip(RoundedCornerShape(50)).background(if (outlined) C39.Surface2 else accent)

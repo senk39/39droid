@@ -1,5 +1,6 @@
 package io.github.senk39.droid39.media
 
+import io.github.senk39.droid39.widget.WidgetUpdater
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Bitmap
@@ -114,6 +115,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         saveState()
         publishState(forcePaused = true)
+        WidgetUpdater.nowChanged(this, currentId, false)   // widżet: pauza
         g.live.onPause = null
         g.live.setPlaying(false)
         tracker.finish()
@@ -306,11 +308,19 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Widżety na ekranie głównym: bieżący utwór i odtwarzanie / pauza (przycisk – wg „graj, gdy gotowy”). */
+    private fun widgets() {
+        val id = player.currentMediaItem?.mediaId?.toIntOrNull()
+        WidgetUpdater.nowChanged(this, id,
+            player.playWhenReady && player.playbackState != Player.STATE_ENDED)
+    }
+
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             tracker.finish()
             val id = mediaItem?.mediaId?.toIntOrNull()
             currentId = id
+            widgets()
             scrobbler.transition(mediaItem, player.isPlaying, reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
             if (id != null) {
                 scope.launch {
@@ -335,6 +345,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             updateLivePlaying()
+            widgets()
             publishSoon()
         }
 
@@ -344,6 +355,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             updateLivePlaying()
+            if (playbackState == Player.STATE_ENDED) widgets()
             if (playbackState == Player.STATE_ENDED) {
                 tracker.finish()
                 scrobbler.complete(player.currentMediaItem)

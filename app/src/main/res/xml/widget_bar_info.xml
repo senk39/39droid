@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="50dp"
+    android:targetCellWidth="4" android:targetCellHeight="1"
+    android:minResizeWidth="180dp" android:minResizeHeight="40dp"
+    android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen|keyguard"
+    android:initialLayout="@layout/widget_bar_left" android:previewLayout="@layout/widget_bar_left"
+    android:description="@string/widget_bar_desc" android:updatePeriodMillis="0"
+    android:configure="io.github.senk39.droid39.widget.WidgetConfigActivity"
+    android:widgetFeatures="reconfigurable|configuration_optional" />
