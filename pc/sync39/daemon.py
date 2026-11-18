@@ -181,6 +181,7 @@ CONFIRM_FILE = "confirm-deletions.json"
 PENDING_FILE = "pending-deletions.txt"
 EXPORT_TIMEOUT_S = 3 * 3600          # pierwszy eksport tworzy miniatury wszystkich okładek
 EXPORT_RETRY_S = 300                 # po nieudanym eksporcie – nie częściej (każda próba kopiuje bazę 39player)
+HEARTBEAT_S = 30                     # znak życia w status.json (39player uznaje sync39 za działający do 180 s)
 
 
 def take_confirmation() -> int | None:
@@ -331,10 +332,16 @@ class Daemon:
                                                   f"{EXPORT_RETRY_S // 60} min, zob. sync39.log")
 
     # ------------------------------------------------------------------ pętla
+    def _heartbeat(self) -> None:
+        """Znak życia także w trakcie długich operacji (pierwszy skan NAS, eksport wszystkich okładek)."""
+        while not self.stop.wait(HEARTBEAT_S):
+            set_status()
+
     def run(self) -> None:
         log.info("sync39 w tle: %s → %s, telefon: %s", self.src or "(brak źródła)", self.dst or "(brak celu)",
                  self.sync_dir or "(brak)")
         set_status(state="starting", message="Start")
+        threading.Thread(target=self._heartbeat, name="sync39-heartbeat", daemon=True).start()
         watcher = ChangeWatcher(self.src) if self.src and os.path.isdir(self.src) else None
         pending_change = True                                      # pierwszy przebieg po starcie
         changed_at = 0.0
@@ -365,6 +372,7 @@ class Daemon:
                     last_phone = time.time()
                     self.phone_cycle()
         finally:
+            self.stop.set()                                        # koniec znaku życia
             if watcher is not None:
                 watcher.close()
             set_status(state="stopped", message="Zatrzymano")

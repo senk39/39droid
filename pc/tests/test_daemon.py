@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -109,6 +110,24 @@ class DaemonConfirmTest(unittest.TestCase):
             self.assertEqual(self.d.export_retry_at, 0.0)
         finally:
             daemon.run_cli = old
+
+    def test_heartbeat_during_long_operation(self):
+        old = daemon.HEARTBEAT_S
+        daemon.HEARTBEAT_S = 0.05
+        try:
+            daemon.set_status(state="export", message="długi eksport")
+            ts0 = self.status()["ts"]
+            t = threading.Thread(target=self.d._heartbeat)
+            t.start()
+            time.sleep(0.3)                                           # pętla główna zajęta – znak życia i tak jest
+            self.d.stop.set()
+            t.join(2)
+            self.assertFalse(t.is_alive())
+            st = self.status()
+            self.assertGreater(st["ts"], ts0)
+            self.assertEqual(st["state"], "export")
+        finally:
+            daemon.HEARTBEAT_S = old
 
 
 if __name__ == "__main__":
