@@ -12,6 +12,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+SAVE_EVERY = 500                      # postęp (indeks) zapisywany co tyle okładek – przerwany eksport nie zaczyna od zera
+
 
 def art_path(sync_dir: str, key: str) -> str:
     return os.path.join(sync_dir, "art", key[:2], key + ".jpg")
@@ -105,9 +107,11 @@ def export(lib, sync_dir: str, arts: dict, size: int = 512, quality: int = 82, r
     with ThreadPoolExecutor(max_workers=4) as ex:
         for _ in ex.map(one, todo):
             done += 1
-            if done % 500 == 0:
+            if done % SAVE_EVERY == 0:
                 log(f"    {done}/{len(todo)} ({time.time() - t0:.0f} s)")
-                _save_index(idx_path, index)
+                with lock:                                     # wątki dopisują do indeksu w trakcie zapisu
+                    snap = dict(index)
+                _save_index(idx_path, snap)
     _save_index(idx_path, index)
     log(f"  okładki: zapisano {stats['written']}, bez okładki {stats['none']}, błędy {stats['errors']} "
         f"({time.time() - t0:.0f} s)")
