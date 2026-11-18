@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
 import io.github.senk39.droid39.data.SnapshotDb
@@ -131,7 +132,7 @@ fun PlaylistsScreen() {
     Column(Modifier.fillMaxSize()) {
         TopBar("Playlisty", extra = { SmallIconButton(Icons39.Add, "Nowa playlista", tint = C39.Text) { create = true } })
         if (lists == null) { Loading(); return@Column }
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             items(lists, key = { it.rel }) { p ->
                 if (p.kind == "dir") {
                     SectionTitle(p.rel.replace("/", " › "))
@@ -216,7 +217,7 @@ fun TagsScreen() {
         OutlinedTextField(filter, { filter = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), placeholder = { Text("Filtruj tagi…") }, singleLine = true)
         val tokens = T.queryTokens(filter)
         val shown = tags.filter { t -> tokens.isEmpty() || T.sortKey(t.name).let { k -> tokens.all { k.contains(it) } } }
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             val stars = shown.filter { it.id in starred }
             if (stars.isNotEmpty()) {
                 item { SectionTitle("★ Ulubione tagi") }
@@ -261,7 +262,7 @@ fun StarsScreen() {
         if (stars.isEmpty()) {
             EmptyState("Brak gwiazdek", "Gwiazdki dla tagów, vocaP i albumów nadajesz w 39player na PC.", Icons39.Star); return@Column
         }
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             val vocap = stars.filter { it.kind == "vocap" }.mapNotNull { s -> lib.nodeByPath(s.ident) }
             if (vocap.isNotEmpty()) {
                 item { SectionTitle("vocaP") }
@@ -301,7 +302,7 @@ fun CommitsScreen() {
         TopBar("Ostatnio zatwierdzone")
         if (commits == null) { Loading(); return@Column }
         if (commits.isEmpty()) { EmptyState("Brak zatwierdzeń", "Historia zatwierdzeń z listy „Nie przesłuchane” w 39player."); return@Column }
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             itemsIndexed(commits) { idx, (ts, items) ->
                 var open by rememberSaveable(idx) { mutableStateOf(idx == 0) }
                 val best = items.count { it.second == 2 }
@@ -330,7 +331,7 @@ fun QueueScreen() {
         TopBar("Kolejka", extra = { SmallIconButton(Icons39.Close, "Wyczyść kolejkę", tint = C39.Text) { g.player.clearQueue() } })
         if (rows == null) { Loading(); return@Column }
         if (rows.isEmpty()) { EmptyState("Kolejka jest pusta", "Wybierz utwór z biblioteki.", Icons39.Queue); return@Column }
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             itemsIndexed(rows, key = { i, r -> "$i-${r.id}" }) { i, r ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${i + 1}", Modifier.width(40.dp).padding(start = 12.dp), color = if (i == ui.index) accent else C39.Text3, fontSize = 12.sp)
@@ -365,7 +366,7 @@ fun SearchScreen() {
             return@Column
         }
         val (nodes, tags, tracks) = r
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             if (nodes.isNotEmpty()) {
                 item { SectionTitle("Kategorie i wykonawcy") }
                 items(nodes.take(20), key = { "n${it.id}" }) { n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }

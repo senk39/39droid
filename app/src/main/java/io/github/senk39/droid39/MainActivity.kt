@@ -49,17 +49,20 @@ import io.github.senk39.droid39.ui.screens.TagScreen
 import io.github.senk39.droid39.ui.screens.TagsScreen
 import io.github.senk39.droid39.ui.screens.dominantColor
 import io.github.senk39.droid39.ui.screens.rememberCurrentTrack
+import io.github.senk39.droid39.ui.components.EdgeSwipeBack
+import io.github.senk39.droid39.ui.screens.FolderScreen
 import io.github.senk39.droid39.ui.theme.C39
+import io.github.senk39.droid39.ui.theme.DarkPalette
+import io.github.senk39.droid39.ui.theme.LightPalette
 import io.github.senk39.droid39.ui.theme.Theme39
+import androidx.compose.foundation.isSystemInDarkTheme
 
 @UnstableApi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // aplikacja ma zawsze ciemny motyw – jasne ikony pasków systemowych niezależnie od trybu telefonu
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(0xE60D0F12.toInt()),
-        )
+        val light = isLightTheme(App.graph.settings.theme, systemDark())
+        C39.palette = if (light) LightPalette else DarkPalette
+        applySystemBars(light)
         super.onCreate(savedInstanceState)
         App.graph.player.connect()
         handleIntent(intent)
@@ -99,9 +102,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun systemDark(): Boolean =
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    /** Ikony pasków systemowych: jasne na ciemnym motywie, ciemne na jasnym. */
+    fun applySystemBars(light: Boolean) {
+        val transparent = android.graphics.Color.TRANSPARENT
+        if (light) enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(transparent, transparent),
+            navigationBarStyle = SystemBarStyle.light(0xE6F4F5F7.toInt(), 0xE6F4F5F7.toInt()),
+        ) else enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(transparent),
+            navigationBarStyle = SystemBarStyle.dark(0xE60D0F12.toInt()),
+        )
+    }
+
     companion object {
         const val EXTRA_OPEN_PLAYER = "open_player"
     }
+}
+
+fun isLightTheme(setting: String, systemDark: Boolean): Boolean = when (setting) {
+    "light" -> true
+    "system" -> !systemDark
+    else -> false
 }
 
 @UnstableApi
@@ -128,20 +153,29 @@ private fun Root() {
         if (!g.settings.accentFromArt) null
         else g.art.load(row?.artKey, row?.rel, 96)?.let { dominantColor(it) }
     }
-    val accent by animateColorAsState(artColor ?: C39.Miku, tween(600), label = "accent")
+    // motyw: ciemny / jasny / jak w systemie (zmiana w Ustawieniach działa od razu)
+    val light = isLightTheme(g.settings.theme, isSystemInDarkTheme())   // settingsV – odświeżenie po zmianie
+    LaunchedEffect(light) {
+        C39.palette = if (light) LightPalette else DarkPalette
+        (ctx as? MainActivity)?.applySystemBars(light)
+    }
+    val accent by animateColorAsState(C39.readableAccent(artColor ?: C39.Miku), tween(600), label = "accent")
     Theme39(accent) {
-        BackHandler(enabled = Nav.playerOpen || Nav.stack.size > 1) { Nav.back() }
-        Box(Modifier.fillMaxSize().background(C39.Bg)) {
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { Screen(Nav.current) }
-                MiniPlayer()
-            }
-            AnimatedVisibility(
-                visible = Nav.playerOpen,
-                enter = slideInVertically(tween(260)) { it },
-                exit = slideOutVertically(tween(220)) { it },
-            ) {
-                Box(Modifier.fillMaxSize().background(Color.Black)) { PlayerScreen() }
+        val canGoBack = Nav.playerOpen || Nav.stack.size > 1
+        BackHandler(enabled = canGoBack) { Nav.back() }
+        EdgeSwipeBack(enabled = canGoBack, onBack = { Nav.back() }) {
+            Box(Modifier.fillMaxSize().background(C39.Bg)) {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) { Screen(Nav.current) }
+                    MiniPlayer()
+                }
+                AnimatedVisibility(
+                    visible = Nav.playerOpen,
+                    enter = slideInVertically(tween(260)) { it },
+                    exit = slideOutVertically(tween(220)) { it },
+                ) {
+                    Box(Modifier.fillMaxSize().background(C39.Bg)) { PlayerScreen() }
+                }
             }
         }
     }
@@ -168,5 +202,6 @@ private fun Screen(r: Route) = key(r) {
         Route.Stars -> StarsScreen()
         Route.Commits -> CommitsScreen()
         Route.Queue -> QueueScreen()
+        is Route.Folder -> FolderScreen(r.path)
     }
 }

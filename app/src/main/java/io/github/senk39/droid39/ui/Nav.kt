@@ -21,6 +21,8 @@ sealed interface Route {
     data object Stars : Route
     data object Commits : Route
     data object Queue : Route
+    /** Folder biblioteki (ścieżka względna z „/”; „” – folder główny muzyki). */
+    data class Folder(val path: String) : Route
 }
 
 /** Prosta nawigacja (stos ekranów) – stan na poziomie procesu. */

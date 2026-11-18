@@ -198,6 +198,32 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
         return query(where, tokens.toTypedArray(), "t.sort_title", limit)
     }
 
+    /**
+     * Zawartość folderu biblioteki `dir` („” – folder główny): podfoldery z liczbą utworów w całym poddrzewie
+     * i ID utworów leżących bezpośrednio w folderze (w kolejności nazw plików).
+     */
+    fun folderListing(dir: String): Pair<List<Pair<String, Int>>, List<Int>> {
+        val prefix = if (dir.isEmpty()) "" else "$dir/"
+        val subs = HashMap<String, Int>()
+        val direct = ArrayList<Pair<String, Int>>()
+        val sql = if (prefix.isEmpty()) "SELECT id, rel FROM track"
+        else "SELECT id, rel FROM track WHERE substr(rel, 1, ${prefix.length}) = ?"
+        db.rawQuery(sql, if (prefix.isEmpty()) null else arrayOf(prefix)).use { c ->
+            while (c.moveToNext()) {
+                val rest = c.getString(1).substring(prefix.length)
+                val i = rest.indexOf('/')
+                if (i < 0) direct += rest to c.getInt(0) else subs.merge(rest.substring(0, i), 1, Int::plus)
+            }
+        }
+        val folders = subs.entries.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.key }).map { it.key to it.value }
+        return folders to direct.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.first }).map { it.second }
+    }
+
+    /** Wszystkie utwory w folderze i jego podfolderach (kolejność ścieżek). */
+    fun folderTracks(dir: String): List<TrackRow> =
+        if (dir.isEmpty()) query("", emptyArray(), "t.rel")
+        else query("substr(t.rel, 1, ${dir.length + 1}) = ?", arrayOf("$dir/"), "t.rel")
+
     /** Ścieżki utworów z daną okładką (do wyciągnięcia jej z pliku na telefonie). */
     fun relsForArt(artKey: String, limit: Int = 8): List<String> {
         val out = ArrayList<String>()

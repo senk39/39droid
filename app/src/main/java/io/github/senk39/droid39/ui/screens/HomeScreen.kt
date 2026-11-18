@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
 import io.github.senk39.droid39.sync.DeviceState
@@ -132,7 +133,7 @@ fun HomeScreen() {
                 g.scope.launch { g.sync.syncNow() }
             }
         })
-        LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        ScrollColumn {
             item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount) }
             item { ContinueFromPcCard() }
             if (!ready) {
@@ -148,7 +149,7 @@ fun HomeScreen() {
                         }
                     }
                 }
-                return@LazyColumn
+                return@ScrollColumn
             }
             if (mirrorSuggestion != null || mirrorMsg != null) {
                 item {
@@ -198,6 +199,7 @@ fun HomeScreen() {
             item { IconTextRow(Icons39.Tag, "Tagi (VocaDB)", null, C39.Miku, counts?.get("tags")?.toString()) { Nav.go(Route.Tags) } }
             item { IconTextRow(Icons39.Star, "Ulubione (gwiazdki)", "Tagi, vocaP i albumy z 39player", C39.Gold) { Nav.go(Route.Stars) } }
             item { IconTextRow(Icons39.CheckCircle, "Ostatnio zatwierdzone", "Historia z listy Nie przesłuchane", C39.Green) { Nav.go(Route.Commits) } }
+            item { IconTextRow(Icons39.Folder, "Foldery", "Układ folderów jak na PC", LocalAccent.current) { Nav.go(Route.Folder("")) } }
             item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } }
         }
     }

@@ -102,6 +102,8 @@ fun TrackListScreen(
     header: (LazyListScope.() -> Unit)? = null,
     sortable: Boolean = true,
     emptyText: String = "Brak utworów",
+    /** Co grają „Odtwórz” i „Losowo”, gdy sama lista jest pusta (np. folder tylko z podfolderami). */
+    playRows: (() -> List<TrackRow>)? = null,
 ) {
     var sort by rememberSaveable(title) { mutableStateOf(SortMode.DEFAULT) }
     var desc by rememberSaveable(title) { mutableStateOf(false) }
@@ -119,14 +121,23 @@ fun TrackListScreen(
     }
     val player = App.graph.player
     val state = rememberLazyListState()
-    LazyColumn(state = state, contentPadding = PaddingValues(bottom = 96.dp)) {
+    val scope = rememberCoroutineScope()
+    fun playAll(shuffle: Boolean) {
+        val s = sorted
+        if (!s.isNullOrEmpty()) player.play(s, 0, shuffle, ctx.label)
+        else if (playRows != null) scope.launch {
+            val all = withContext(Dispatchers.IO) { playRows() }
+            if (all.isNotEmpty()) player.play(all, 0, shuffle, ctx.label)
+        }
+    }
+    ScrollbarBox(state) { LazyColumn(state = state, contentPadding = PaddingValues(bottom = 96.dp)) {
         item(key = "__head") {
             ListHeader(
                 title = title,
                 subtitle = subtitle ?: rows?.let { "${T.tracks(it.size)} · ${T.totalTime(it.sumOf { r -> r.duration })}" },
                 artKey = headerArt, rel = headerRel,
-                onPlay = { sorted?.let { player.play(it, 0, false, ctx.label) } },
-                onShuffle = { sorted?.let { player.play(it, 0, true, ctx.label) } },
+                onPlay = { playAll(false) },
+                onShuffle = { playAll(true) },
                 sort = if (sortable) sort else null, desc = desc,
                 onSort = { m -> if (m == sort) desc = !desc else { sort = m; desc = false } },
                 onFilter = { showFilter = !showFilter; if (!showFilter) filter = "" },
@@ -142,12 +153,14 @@ fun TrackListScreen(
         header?.invoke(this)
         when {
             sorted == null -> item { Loading() }
-            sorted.isEmpty() -> item { EmptyState(emptyText, if (filter.isNotEmpty()) "Nic nie pasuje do filtra." else "") }
+            sorted.isEmpty() -> if (emptyText.isNotEmpty() || filter.isNotEmpty()) item {
+                EmptyState(emptyText.ifEmpty { "Brak utworów" }, if (filter.isNotEmpty()) "Nic nie pasuje do filtra." else "")
+            }
             else -> itemsIndexed(sorted, key = { i, r -> "${r.id}#$i" }) { i, r ->
                 TrackRowView(r, ctx, onPlay = { player.play(sorted, i, false, ctx.label) })
             }
         }
-    }
+    } }
 }
 
 @Composable
@@ -340,6 +353,10 @@ fun TrackActionsSheet(rows: List<TrackRow>, ctx: ListCtx, onDismiss: () -> Unit)
             }
             if (rows.size == 1) {
                 SheetItem(Icons39.Info, "Informacje o utworze (VocaDB)") { info = true }
+                val dir = r.rel.substringBeforeLast('/', "")
+                SheetItem(Icons39.Folder, "Pokaż w folderze: " + dir.ifEmpty { "folder główny" }.replace("/", " › ")) {
+                    Nav.playerOpen = false; Nav.go(Route.Folder(dir)); onDismiss()
+                }
                 val nodes = rememberLoad(r.id) { lib.nodesOfTrack(r.id).filter { it.kind in setOf("vocap", "vocal", "variant", "album", "folder", "root") } }
                 nodes?.sortedBy { listOf("vocap", "vocal", "variant", "album", "folder", "root").indexOf(it.kind) }?.take(6)?.forEach { n ->
                     SheetItem(Icons39.OpenIn, "Przejdź: " + lib.nodePathNames(n).joinToString(" › ") { it.name }) {

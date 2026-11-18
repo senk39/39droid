@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
 import io.github.senk39.droid39.data.Franchise
@@ -182,7 +183,7 @@ private fun AggregateNode(node: NodeRow) {
     val liked = remember(children) {
         children.filter { it.likes >= 3 }.sortedByDescending { it.likes }.take(40).filter { it !in top }.shuffled().take(16)
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+    ScrollColumn {
         item {
             Column(Modifier.padding(16.dp)) {
                 Text(node.name, style = MaterialTheme.typography.titleLarge)

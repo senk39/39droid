@@ -350,6 +350,15 @@ class Library(
 
     fun allTracks(): List<TrackRow> = withSnap { it.query("", emptyArray(), "t.rel") } ?: emptyList()
 
+    /** Folder biblioteki: podfoldery (nazwa, liczba utworów w poddrzewie) i utwory bezpośrednio w nim. */
+    fun folderListing(dir: String): FolderListing? = withSnap { s ->
+        val (subs, ids) = s.folderListing(dir)
+        FolderListing(subs.map { (name, n) -> FolderEntry(name, if (dir.isEmpty()) name else "$dir/$name", n) }, s.tracksByIds(ids))
+    }
+
+    /** Wszystkie utwory folderu z podfolderami. */
+    fun folderTracks(dir: String): List<TrackRow> = withSnap { it.folderTracks(dir) } ?: emptyList()
+
     /** Utwory albumu (klucz: folder albumu względem folderu muzyki, małymi literami). */
     fun albumTracks(albumKey: String): List<TrackRow> =
         withSnap { it.query("t.album_key = ?", arrayOf(albumKey), "t.disc_no, t.track_no, t.rel") } ?: emptyList()

@@ -382,6 +382,14 @@ fun SettingsScreen() {
             }
 
             // ------------------------------------------------------------------ odtwarzanie i scrobbler
+            SectionTitle("Wygląd")
+            var theme by remember { mutableStateOf(s.theme) }
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("dark" to "Ciemny", "light" to "Jasny", "system" to "Jak w telefonie").forEach { (v, label) ->
+                    Choice(label, theme == v) { theme = v; s.theme = v }
+                }
+            }
+
             SectionTitle("Odtwarzanie")
             Toggle("Strumieniuj przez sieć komórkową", "Po wyłączeniu poza Wi-Fi grają tylko utwory na telefonie", s.allowMobileStreaming) { s.allowMobileStreaming = it }
             Toggle("Kolor akcentu z okładki", "Jak w PowerAmp", s.accentFromArt) { s.accentFromArt = it }

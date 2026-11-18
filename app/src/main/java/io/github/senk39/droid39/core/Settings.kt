@@ -123,6 +123,8 @@ class Settings(context: Context) {
 
     // ---------------------------------------------------------------- wygląd / odtwarzanie
     var accentFromArt by bool("accent_from_art", true)
+    /** Motyw: „dark”, „light” albo „system” (jak w ustawieniach telefonu). */
+    var theme by str("theme", "dark")
     var resumeOnStart by bool("resume_on_start", false)
 
     // ---------------------------------------------------------------- urządzenie i stan synchronizacji

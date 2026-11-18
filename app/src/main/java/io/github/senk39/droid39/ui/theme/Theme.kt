@@ -4,32 +4,68 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** Kolory w duchu PowerAmp: prawie czarne tło, karty o odcień jaśniejsze, akcent Miku (#39C5BB). */
+/** Kolory zależne od motywu (tło, karty, tekst i akcenty, które na jasnym tle muszą być ciemniejsze). */
+data class Palette(
+    val light: Boolean,
+    val bg: Color, val surface: Color, val surface2: Color, val surface3: Color, val line: Color,
+    val text: Color, val text2: Color, val text3: Color,
+    val miku: Color, val gold: Color, val green: Color,
+)
+
+val DarkPalette = Palette(
+    false, Color(0xFF0D0F12), Color(0xFF15181D), Color(0xFF1C2027), Color(0xFF262B33), Color(0xFF2B3038),
+    Color(0xFFEDEFF2), Color(0xFFA3A9B3), Color(0xFF6C737E),
+    Color(0xFF39C5BB), Color(0xFFE9B949), Color(0xFF3FB950),
+)
+
+val LightPalette = Palette(
+    true, Color(0xFFF4F5F7), Color(0xFFFFFFFF), Color(0xFFEBEDF1), Color(0xFFDFE3E8), Color(0xFFD3D8DF),
+    Color(0xFF15181D), Color(0xFF4A515C), Color(0xFF767E8A),
+    Color(0xFF1C968D), Color(0xFFA8780C), Color(0xFF2B8A3E),
+)
+
+/**
+ * Kolory w duchu PowerAmp: w ciemnym motywie prawie czarne tło, karty o odcień jaśniejsze, akcent Miku (#39C5BB);
+ * w jasnym – jasnoszare tło, białe karty i przyciemnione akcenty (czytelne na białym).
+ */
 object C39 {
-    val Bg = Color(0xFF0D0F12)
-    val Surface = Color(0xFF15181D)
-    val Surface2 = Color(0xFF1C2027)
-    val Surface3 = Color(0xFF262B33)
-    val Line = Color(0xFF2B3038)
-    val Text = Color(0xFFEDEFF2)
-    val Text2 = Color(0xFFA3A9B3)
-    val Text3 = Color(0xFF6C737E)
-    val Miku = Color(0xFF39C5BB)
+    /** Aktualny motyw – odczyt w kompozycji odświeża ekran po zmianie. */
+    var palette by mutableStateOf(DarkPalette)
+
+    val Bg get() = palette.bg
+    val Surface get() = palette.surface
+    val Surface2 get() = palette.surface2
+    val Surface3 get() = palette.surface3
+    val Line get() = palette.line
+    val Text get() = palette.text
+    val Text2 get() = palette.text2
+    val Text3 get() = palette.text3
+    val Miku get() = palette.miku
     val MikuDark = Color(0xFF1E6E68)
     val Pink = Color(0xFFE12885)
     val Heart = Color(0xFFFF4F7B)
     val Warn = Color(0xFFE5484D)
-    val Gold = Color(0xFFE9B949)
-    val Green = Color(0xFF3FB950)
+    val Gold get() = palette.gold
+    val Green get() = palette.green
     val Lastfm = Color(0xFFD51007)
+
+    /** Akcent z okładki bywa jasny – na jasnym tle przyciemniony, żeby tekst i ikony były czytelne. */
+    fun readableAccent(c: Color): Color =
+        if (palette.light && c.luminance() > 0.32f) lerp(c, Color.Black, 0.38f) else c
 
     /** Kolory pigułek typów tagów VocaDB (jak w 39player: tło, tekst). */
     val TagColors = mapOf(
@@ -53,11 +89,29 @@ object C39 {
 }
 
 /** Kolor akcentu (zmienia się wg okładki odtwarzanego utworu, jeśli włączone). */
-val LocalAccent = staticCompositionLocalOf { C39.Miku }
+val LocalAccent = staticCompositionLocalOf { DarkPalette.miku }
 
 @Composable
 fun Theme39(accent: Color = C39.Miku, content: @Composable () -> Unit) {
-    val scheme = darkColorScheme(
+    val scheme = if (C39.palette.light) lightColorScheme(
+        primary = accent,
+        onPrimary = Color.White,
+        secondary = C39.Pink,
+        background = C39.Bg,
+        onBackground = C39.Text,
+        surface = C39.Surface,
+        onSurface = C39.Text,
+        surfaceVariant = C39.Surface2,
+        onSurfaceVariant = C39.Text2,
+        surfaceContainer = C39.Surface,
+        surfaceContainerHigh = C39.Surface,
+        surfaceContainerHighest = C39.Surface2,
+        surfaceContainerLow = C39.Surface,
+        surfaceContainerLowest = C39.Bg,
+        outline = C39.Line,
+        outlineVariant = C39.Line,
+        error = C39.Warn,
+    ) else darkColorScheme(
         primary = accent,
         onPrimary = Color(0xFF00201D),
         secondary = C39.Pink,

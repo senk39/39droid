@@ -149,3 +149,10 @@ enum class SortMode(val label: String) {
     DEFAULT("Domyślnie"), TITLE("Tytuł"), ARTIST("Wykonawca"), ALBUM("Album"), DURATION("Długość"),
     ADDED("Data dodania"), PLAYS("Odtworzenia"), YEAR("Rok"), RANDOM("Losowo")
 }
+
+/** Podfolder w przeglądarce folderów: nazwa, pełna ścieżka względna, liczba utworów w całym poddrzewie. */
+data class FolderEntry(val name: String, val path: String, val count: Int)
+
+data class FolderListing(val folders: List<FolderEntry>, val tracks: List<TrackRow>) {
+    val total: Int get() = folders.sumOf { it.count } + tracks.size
+}
