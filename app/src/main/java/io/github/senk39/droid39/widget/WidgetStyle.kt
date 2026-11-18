@@ -39,11 +39,13 @@ data class WidgetStyle(
     val line3: TextSpec = TextSpec(12, "italic"),
     /** Styl przycisków – klucz z [BUTTONS]. */
     val buttons: String = "filled_play",
+    /** Wokaliści z „feat.” na początku (false – same nazwy, np. „Hatsune Miku”). */
+    val featPrefix: Boolean = true,
 ) {
     fun toJson(): String = JSONObject()
         .put("layout", layout).put("theme", theme).put("opacity", opacity).put("radius", radiusDp)
         .put("title", title.toJson()).put("line2", line2.toJson()).put("line3", line3.toJson())
-        .put("buttons", buttons).toString()
+        .put("buttons", buttons).put("feat", featPrefix).toString()
 
     companion object {
         val LAYOUTS = linkedMapOf("left" to "Okładka po lewej", "right" to "Okładka po prawej", "top" to "Okładka nad tekstem")
@@ -73,6 +75,7 @@ data class WidgetStyle(
                 line2 = TextSpec.from(o.optJSONObject("line2"), def.line2),
                 line3 = TextSpec.from(o.optJSONObject("line3"), def.line3),
                 buttons = o.optString("buttons", def.buttons).takeIf { it in BUTTONS } ?: def.buttons,
+                featPrefix = o.optBoolean("feat", def.featPrefix),
             )
         }
 

@@ -156,7 +156,8 @@ object WidgetRenderer {
         }
         text(R.id.w_title, now.title, style.title, c.text)
         text(R.id.w_line2, now.line2, style.line2, c.text2)
-        text(R.id.w_line3, if (compact) null else now.line3, style.line3, c.text2)
+        val vocals = if (style.featPrefix) now.line3 else now.line3?.removePrefix("feat. ")
+        text(R.id.w_line3, if (compact) null else vocals, style.line3, c.text2)
 
         // przyciski – rysowane jako obrazki (kółko + ikona): barwienie tła przez RemoteViews różni się między
         // launcherami (np. obrys wypełniał się kolorem)

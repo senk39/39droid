@@ -26,7 +26,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -159,7 +163,15 @@ private fun ConfigScreen(kind: String, initial: WidgetStyle, onSave: (WidgetStyl
 
             TextBlock("Tytuł utworu", style.title) { style = style.copy(title = it) }
             TextBlock("Kompozytor (Vocaloid) / wykonawca", style.line2) { style = style.copy(line2 = it) }
-            if (!compact) TextBlock("Wokaliści (Vocaloid)", style.line3) { style = style.copy(line3 = it) }
+            if (!compact) {
+                TextBlock("Wokaliści (Vocaloid)", style.line3) { style = style.copy(line3 = it) }
+                Row(Modifier.fillMaxWidth().clickable { style = style.copy(featPrefix = !style.featPrefix) }
+                    .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(style.featPrefix, { style = style.copy(featPrefix = it) },
+                        colors = CheckboxDefaults.colors(checkedColor = LocalAccent.current))
+                    Text("Pokazuj „feat.” przed wokalistami", fontSize = 14.sp, color = C39.Text)
+                }
+            }
 
             Section("Przyciski")
             Chips(WidgetStyle.BUTTONS, style.buttons) { style = style.copy(buttons = it) }
