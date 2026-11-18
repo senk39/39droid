@@ -277,10 +277,11 @@ private fun colorFor(kind: String) = when (kind) {
 private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int) {
     val g = App.graph
     val accent = LocalAccent.current
-    val (icon, color, text) = when (nas) {
-        is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${nas.label})")
+    val (icon, color, text) = when (val s = if (g.settings.nasConfigured) nas else NasState.NotConfigured) {
+        is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${s.label})")
         is NasState.Offline -> Triple(Icons39.CloudOff, C39.Text2, "NAS niedostępny – grają tylko utwory na telefonie")
-        NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold, "NAS nie jest skonfigurowany")
+        NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold,
+            "NAS nie jest skonfigurowany – grają tylko utwory na telefonie (Ustawienia → NAS)")
         NasState.Unknown -> Triple(Icons39.Cloud, C39.Text3, "NAS: sprawdzanie przy pierwszym użyciu")
     }
     Column(

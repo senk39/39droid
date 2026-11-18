@@ -20,6 +20,13 @@ import java.io.File
 import java.io.IOException
 
 /**
+ * Strumieniowanie niemożliwe z powodu ustawień (brak NAS, wyłączona sieć komórkowa) – nie dotyczy jednego utworu,
+ * więc odtwarzacz nie przeskakuje kolejki, tylko zatrzymuje się i pokazuje przyczynę.
+ */
+@UnstableApi
+class StreamingBlockedException(message: String, reason: Int) : DataSourceException(message, null, reason)
+
+/**
  * Źródło danych utworu „d39://t/<id>?rel=…&size=…”: najpierw plik lokalny (pobrany albo kopia na karcie),
  * a gdy go brak – strumień z NAS przez pamięć podręczną (LRU).
  */
@@ -53,12 +60,12 @@ class RoutingDataSource(
             }
         }
         if (!settings.nasConfigured) {
-            throw DataSourceException("Utwór nie jest zapisany na telefonie, a NAS nie jest skonfigurowany",
-                null, PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
+            throw StreamingBlockedException("Utwór nie jest zapisany na telefonie, a NAS nie jest skonfigurowany " +
+                "– Ustawienia → NAS", PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
         }
         if (!nas.streamingAllowed()) {
-            throw DataSourceException("Strumieniowanie przez sieć komórkową jest wyłączone (Ustawienia)",
-                null, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+            throw StreamingBlockedException("Strumieniowanie przez sieć komórkową jest wyłączone (Ustawienia)",
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         }
         // dwie próby: zerwane połączenie (np. NAS rozłączył bezczynną sesję SMB) jest odnawiane
         for (attempt in 0..1) {

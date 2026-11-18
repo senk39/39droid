@@ -26,7 +26,7 @@ sealed class NasState {
 class Nas(private val context: Context, private val settings: Settings) {
     private var fs: RemoteFs? = null
     private var fsKey: String? = null
-    private val _state = MutableStateFlow<NasState>(NasState.Unknown)
+    private val _state = MutableStateFlow<NasState>(if (settings.nasConfigured) NasState.Unknown else NasState.NotConfigured)
     val state: StateFlow<NasState> = _state
     @Volatile private var lastFailAt = 0L
 

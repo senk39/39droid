@@ -352,12 +352,25 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val blocked = generateSequence<Throwable>(error) { it.cause }.filterIsInstance<StreamingBlockedException>()
+                .firstOrNull()
+            if (blocked != null) {
+                // ustawienia, nie utwór – przeskakiwanie kolejki nic nie da; zatrzymaj i powiedz dlaczego
+                errorsInRow = 0
+                player.pause()                                     // „Odtwórz” po zmianie ustawień próbuje ponownie
+                Toast.makeText(this@PlaybackService, blocked.message, Toast.LENGTH_LONG).show()
+                return
+            }
             // jak w 39player: uszkodzony / niedostępny utwór jest pomijany (bez zapętlenia przy braku sieci)
             errorsInRow++
             if (errorsInRow <= 5 && player.hasNextMediaItem()) {
                 player.seekToNextMediaItem()
                 player.prepare()
                 player.play()
+            } else {
+                val why = generateSequence<Throwable>(error) { it.cause }.mapNotNull { it.message }.lastOrNull()
+                Toast.makeText(this@PlaybackService, "Nie udało się odtworzyć: ${why ?: error.errorCodeName}",
+                    Toast.LENGTH_LONG).show()
             }
         }
 
