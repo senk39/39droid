@@ -98,6 +98,8 @@ class Sync39Test(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.playlists, "Z telefonu test.m3u8")))
         self.assertIn(played, lib.playlist_ids("Z telefonu test.m3u8")[0])
         self.assertNotIn(played, lib.playlist_contains("playlista_najlepsze"))   # playlisty systemowej nie zmieniamy
+        from player39 import droid_link                     # …a telefon dostaje powód (state/rejected-<urządzenie>.json)
+        self.assertEqual([x["seq"] for x in droid_link.load_rejected(self.sync_dir, dev)], [8])
         if unl is not None:
             self.assertEqual(lib.marks_of(unl), (0, 1, 1))
         self.assertTrue(os.path.exists(os.path.join(d, "done", "j-0000000001-0000000009.json")))

@@ -185,7 +185,10 @@ a **Kontynuuj z PC** w 39droid – odwrotnie.
 
 Każde zdarzenie z telefonu ma numer; PC zapisuje, do którego numeru zastosował zmiany (`39sync/state/applied.json`),
 a migawka przekazuje to telefonowi – zmiany nie zginą ani nie zostaną zastosowane dwa razy. Do czasu potwierdzenia
-telefon pokazuje je u siebie (np. nowe ♥ jest widoczne od razu).
+telefon pokazuje je u siebie (np. nowe ♥ jest widoczne od razu). Zmiany, których PC nie mógł zastosować (np. dodanie
+do playlisty usuniętej na PC, serduszko dla utworu, którego na PC już nie ma), trafiają z powodem do
+`39sync/state/rejected-<telefon>.json` – telefon ostrzega na ekranie głównym i wymienia je w Ustawieniach →
+Synchronizacja z 39player. Eksport bez zmian w bibliotece nie publikuje nowej migawki (skrót treści w manifeście).
 
 Testy: `cd pc && python -m unittest discover -s tests -v` (działają na kopii danych 39player).
 

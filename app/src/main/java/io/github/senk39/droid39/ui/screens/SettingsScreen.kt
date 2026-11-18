@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -199,6 +200,7 @@ fun SettingsScreen(section: String?) {
             } else if (sync.message.isNotEmpty()) {
                 Text(sync.message, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = C39.Green, fontSize = 13.sp)
             }
+            RejectedList()
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button39("Synchronizuj teraz") { scope.launch { g.sync.syncNow() } }
                 if (g.library.pendingOps > 0 || s.uploadedSeq > g.library.ackedSeq()) {
@@ -453,8 +455,9 @@ private fun SettingsHome() {
     val ctx = LocalContext.current
     val changes by s.changes.collectAsState()
     val nas by g.nas.state.collectAsState()
+    val rejected by g.sync.rejected.collectAsState()
     val fmt = remember { SimpleDateFormat("d.MM.yyyy HH:mm", Locale.ROOT) }
-    val summary = remember(changes, nas) {
+    val summary = remember(changes, nas, rejected) {
         mapOf(
             "nas" to when {
                 !s.nasConfigured -> "Nie skonfigurowano"
@@ -465,6 +468,7 @@ private fun SettingsHome() {
             "sync" to buildList {
                 if (s.snapshotCreated > 0) add("Biblioteka z PC: ${fmt.format(Date(s.snapshotCreated))}")
                 if (g.library.pendingOps > 0) add("czeka na wysłanie: ${g.library.pendingOps}")
+                if (rejected.isNotEmpty()) add("PC nie przyjął zmian: ${rejected.size}")
             }.joinToString(" · ").ifEmpty { "Biblioteka z PC i zmiany z telefonu" },
             "card" to (s.managedFolder.ifBlank { s.mirrorList().firstOrNull() ?: "" }.ifBlank { "Kopia biblioteki na karcie SD" }),
             "offline" to listOfNotNull("♥♥".takeIf { s.offlineBest }, "♥".takeIf { s.offlineLiked }, "Do odsłuchania".takeIf { s.offlineUnlistened })
@@ -674,6 +678,34 @@ private fun Button39(label: String, outlined: Boolean = false, onClick: () -> Un
             .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 9.dp),
         color = if (outlined) C39.Text else C39.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
     )
+}
+
+/** Zmiany z telefonu, których PC nie przyjął – co, dlaczego i kiedy; „Ukryj” chowa widziane. */
+@Composable
+private fun RejectedList() {
+    val g = App.graph
+    val rejected by g.sync.rejected.collectAsState()
+    if (rejected.isEmpty()) return
+    val fmt = remember { SimpleDateFormat("d.MM HH:mm", Locale.ROOT) }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp))
+            .background(C39.Surface).padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text("PC nie przyjął zmian z telefonu: ${rejected.size}", color = C39.Warn, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text("Pozostałe zmiany trafiły do 39player. Te pominięto – zwykle dlatego, że na PC czegoś już nie ma.",
+            color = C39.Text3, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+        for (c in rejected.takeLast(50).asReversed()) {
+            Column(Modifier.padding(vertical = 5.dp)) {
+                Text(c.what, color = C39.Text, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val at = if (c.tsMs > 0) " · " + fmt.format(Date(c.tsMs)) else ""
+                Text(c.reason + at, color = C39.Text2, fontSize = 12.sp)
+            }
+        }
+        if (rejected.size > 50) Text("…i ${rejected.size - 50} starszych", color = C39.Text3, fontSize = 12.sp)
+        Row(Modifier.padding(top = 6.dp)) {
+            Button39("Ukryj", outlined = true) { g.sync.dismissRejected() }
+        }
+    }
 }
 
 @Composable

@@ -93,6 +93,7 @@ fun HomeScreen() {
     val overlay by lib.overlayVersion.collectAsState()
     val nas by g.nas.state.collectAsState()
     val sync by g.sync.status.collectAsState()
+    val rejected by g.sync.rejected.collectAsState()
     val filesV by g.files.version.collectAsState()
     val counts = rememberLoad(snapV, overlay) {
         mapOf(
@@ -143,7 +144,7 @@ fun HomeScreen() {
             }
         })
         ScrollColumn {
-            item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount) }
+            item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount, rejected.size) }
             item { ContinueFromPcCard() }
             if (!ready) {
                 item {
@@ -298,7 +299,8 @@ private fun NasStatusIcon(nas: NasState) {
 }
 
 @Composable
-private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int) {
+private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int,
+                       rejected: Int) {
     val g = App.graph
     val accent = LocalAccent.current
     // stan połączenia z NAS – ikona chmurki obok nazwy aplikacji (NasStatusIcon); tu tylko biblioteka i synchronizacja
@@ -313,6 +315,10 @@ private fun StatusCard(nas: NasState, running: Boolean, message: String, progres
             if (localCount > 0) add("Na telefonie: ${T.tracks(localCount)}")
         }
         if (lines.isNotEmpty()) Text(lines.joinToString(" · "), color = C39.Text2, fontSize = 12.sp)
+        if (rejected > 0) {
+            Text("PC nie przyjął zmian z telefonu: $rejected – dotknij, aby zobaczyć dlaczego", color = C39.Warn,
+                fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        }
         if (running) {
             Spacer(Modifier.height(6.dp))
             Text(message, color = accent, fontSize = 12.sp)

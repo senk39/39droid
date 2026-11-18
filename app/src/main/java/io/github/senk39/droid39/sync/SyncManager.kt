@@ -50,6 +50,14 @@ class SyncManager(
     private val _status = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = _status
     private var pushJob: Job? = null
+    private val _rejected = MutableStateFlow<List<RejectedChange>>(emptyList())
+
+    /** Zmiany z telefonu, których PC nie przyjął (jeszcze nieukryte przez użytkownika), z opisem i powodem. */
+    val rejected: StateFlow<List<RejectedChange>> = _rejected
+
+    init {
+        scope.launch(Dispatchers.IO) { runCatching { showRejected(library.local.get(KV_REJECTED)) } }
+    }
 
     /** Callback po zainstalowaniu nowej migawki (np. planowanie pobierania offline). */
     var onSnapshotInstalled: (() -> Unit)? = null
@@ -59,6 +67,7 @@ class SyncManager(
     private companion object {
         /** Zmian w jednym pliku dziennika. */
         const val CHUNK = 500
+        const val KV_REJECTED = "rejected_json"
     }
 
     /** Pełna synchronizacja. Zwraca opis wyniku. */
@@ -69,11 +78,13 @@ class SyncManager(
                 val sent = pushLocked()
                 _status.value = SyncStatus(true, "Sprawdzanie migawki biblioteki…")
                 val pulled = pullLocked()
+                val newlyRejected = runCatching { fetchRejected() }.getOrDefault(0)
                 settings.lastSyncAt = System.currentTimeMillis()
                 settings.lastSyncError = ""
                 val msg = buildString {
                     append(if (pulled) "Pobrano nową bibliotekę z PC" else "Biblioteka aktualna")
                     if (sent > 0) append(" · wysłano zmian: $sent")
+                    if (newlyRejected > 0) append(" · PC nie przyjął zmian: $newlyRejected")
                 }
                 _status.value = SyncStatus(false, msg)
                 if (pulled) onSnapshotInstalled?.invoke()
@@ -257,6 +268,35 @@ class SyncManager(
             .put("last_seq", ops.last().seq)
             .put("events", events)
             .toString(1)
+    }
+
+    // ---------------------------------------------------------------- zmiany nieprzyjęte przez PC
+    /** Odczyt state/rejected-<urządzenie>.json. Zwraca, ile odrzuconych zmian jest nowych od poprzedniego odczytu. */
+    private fun fetchRejected(): Int {
+        val json = try {
+            String(nas.use { it.read(RemoteFs.join(syncDir(), "state", "rejected-${settings.deviceId}.json")) }, Charsets.UTF_8)
+        } catch (e: FileNotFoundException) {
+            null
+        } ?: return 0
+        val before = RejectedChange.parseAll(library.local.get(KV_REJECTED)).maxOfOrNull { it.seq } ?: 0L
+        library.local.put(KV_REJECTED, json)
+        showRejected(json)
+        return RejectedChange.parseAll(json).count { it.seq > before && it.seq > settings.rejectedSeen }
+    }
+
+    private fun showRejected(json: String?) {
+        val seen = settings.rejectedSeen
+        _rejected.value = RejectedChange.parseAll(json).filter { it.seq > seen }.map { c ->
+            val t = c.trackId?.let { id -> library.track(id) }?.takeIf { c.rel == null || it.rel.equals(c.rel, ignoreCase = true) }
+            c.copy(what = RejectedChange.describe(c, t?.let { listOf(it.title, it.artist).filter(String::isNotBlank).joinToString(" – ") }))
+        }
+    }
+
+    /** „Ukryj” – widziane odrzucone zmiany znikają z listy (nowe pojawią się przy następnej synchronizacji). */
+    fun dismissRejected() {
+        val max = _rejected.value.maxOfOrNull { it.seq } ?: return
+        settings.rejectedSeen = maxOf(settings.rejectedSeen, max)
+        _rejected.value = emptyList()
     }
 
     // ---------------------------------------------------------------- migawka z PC ← NAS

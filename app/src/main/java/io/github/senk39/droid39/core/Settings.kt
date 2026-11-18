@@ -134,6 +134,8 @@ class Settings(context: Context) {
         }
     var deviceName by str("device_name", Build.MODEL ?: "Android")
     var uploadedSeq by long("uploaded_seq", 0)
+    /** Zmiany nieprzyjęte przez PC do tego numeru użytkownik już widział („Ukryj”). */
+    var rejectedSeen by long("rejected_seen", 0)
     var lastSyncAt by long("last_sync_at", 0)
     var lastSyncError by str("last_sync_error", "")
     var snapshotSha by str("snapshot_sha", "")
