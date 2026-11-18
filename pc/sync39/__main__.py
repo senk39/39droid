@@ -235,27 +235,48 @@ def cmd_setup(cfg, args) -> int:
     return 0
 
 
-TASK = "39sync"
+TASK = os.environ.get("SYNC39_TASK", "39sync")
+
+
+def _ps(script: str) -> int:
+    return subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=False).returncode
+
+
+def _psq(s: str) -> str:
+    return s.replace("'", "''")
 
 
 def cmd_autostart(cfg, args) -> int:
-    """Zadanie Harmonogramu zadań uruchamiające sync39 w tle po zalogowaniu (bez okna)."""
+    """Zadanie Harmonogramu zadań uruchamiające sync39 w tle po zalogowaniu (bez okna) – tylko dla bieżącego
+    użytkownika, więc bez uprawnień administratora (schtasks /SC ONLOGON ich wymaga)."""
     if args.remove:
-        rc = subprocess.run(["schtasks", "/Delete", "/TN", TASK, "/F"], check=False).returncode
+        rc = _ps(f"Unregister-ScheduledTask -TaskName '{_psq(TASK)}' -Confirm:$false -ErrorAction Stop")
         log("Usunięto zadanie autostartu." if rc == 0 else "Nie udało się usunąć zadania (może nie istnieje).")
         return rc
     exe = sys.executable
     w = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    run = w if os.path.exists(w) else exe
     pyw = os.path.join(settings.HERE, "39sync.pyw")
-    tr = f'"{w if os.path.exists(w) else exe}" "{pyw}"'
-    cmd = ["schtasks", "/Create", "/TN", TASK, "/TR", tr, "/SC", "ONLOGON", "/DELAY", "0001:00", "/RL", "LIMITED", "/F"]
-    rc = subprocess.run(cmd, check=False).returncode
-    if rc == 0:
-        log(f"Zadanie „{TASK}” uruchomi sync39 w tle po każdym zalogowaniu (z minutowym opóźnieniem).")
-        if args.start:
-            subprocess.run(["schtasks", "/Run", "/TN", TASK], check=False)
-            log("Uruchomiono teraz.")
-    return rc
+    script = (
+        r'$u = "$env:USERDOMAIN\$env:USERNAME"; '
+        f"$a = New-ScheduledTaskAction -Execute '{_psq(run)}' -Argument '\"{_psq(pyw)}\"' "
+        f"-WorkingDirectory '{_psq(settings.HERE)}'; "
+        "$t = New-ScheduledTaskTrigger -AtLogOn -User $u; $t.Delay = 'PT1M'; "
+        "$p = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited; "
+        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew; "
+        f"Register-ScheduledTask -TaskName '{_psq(TASK)}' -Action $a -Trigger $t -Principal $p -Settings $s "
+        "-Description 'sync39 w tle: lustro muzyki na NAS, biblioteka dla 39droid' -Force -ErrorAction Stop | Out-Null"
+    )
+    rc = _ps(script)
+    if rc != 0:
+        log("Nie udało się zarejestrować zadania autostartu.")
+        return rc
+    log(f"Zadanie „{TASK}” uruchomi sync39 w tle po każdym zalogowaniu (z minutowym opóźnieniem).")
+    if args.start:
+        _ps(f"Start-ScheduledTask -TaskName '{_psq(TASK)}'")
+        log("Uruchomiono teraz.")
+    return 0
 
 
 def _utf8_output() -> None:
