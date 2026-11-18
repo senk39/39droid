@@ -18,6 +18,8 @@ sealed interface Route {
     data class Tag(val id: Long) : Route
     data object Search : Route
     data object Settings : Route
+    /** Jedna sekcja ustawień: nas, sync, storage, card, offline, ui, playback, scrobbler. */
+    data class SettingsSection(val id: String) : Route
     data object Stars : Route
     data object Commits : Route
     data object Queue : Route

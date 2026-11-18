@@ -230,9 +230,9 @@ fun ActionChip(icon: ImageVector, label: String, color: Color, filled: Boolean =
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(18.dp), tint = if (filled) Color(0xFF00201D) else color)
+        Icon(icon, null, Modifier.size(18.dp), tint = if (filled) C39.OnAccent else color)
         Spacer(Modifier.width(6.dp))
-        Text(label, color = if (filled) Color(0xFF00201D) else color, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text(label, color = if (filled) C39.OnAccent else color, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }
 

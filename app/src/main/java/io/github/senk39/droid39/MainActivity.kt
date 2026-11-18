@@ -163,7 +163,18 @@ private fun Root() {
     Theme39(accent) {
         val canGoBack = Nav.playerOpen || Nav.stack.size > 1
         BackHandler(enabled = canGoBack) { Nav.back() }
-        EdgeSwipeBack(enabled = canGoBack, onBack = { Nav.back() }) {
+        EdgeSwipeBack(
+            enabled = canGoBack,
+            onBack = { Nav.back() },
+            behind = {
+                // ekran, do którego prowadzi gest: spod odtwarzacza – bieżący ekran, inaczej – poprzedni ze stosu
+                val target = if (Nav.playerOpen) Nav.current else Nav.stack.getOrNull(Nav.stack.size - 2)
+                if (target != null) Column(Modifier.fillMaxSize().background(C39.Bg)) {
+                    Box(Modifier.weight(1f)) { Screen(target) }
+                    MiniPlayer()
+                }
+            },
+        ) {
             Box(Modifier.fillMaxSize().background(C39.Bg)) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) { Screen(Nav.current) }
@@ -198,7 +209,8 @@ private fun Screen(r: Route) = key(r) {
         Route.Tags -> TagsScreen()
         is Route.Tag -> TagScreen(r.id)
         Route.Search -> SearchScreen()
-        Route.Settings -> SettingsScreen()
+        Route.Settings -> SettingsScreen(null)
+        is Route.SettingsSection -> SettingsScreen(r.id)
         Route.Stars -> StarsScreen()
         Route.Commits -> CommitsScreen()
         Route.Queue -> QueueScreen()

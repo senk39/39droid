@@ -225,7 +225,7 @@ fun PlayerScreen() {
                     Modifier.size(74.dp).clip(CircleShape).background(accent).clickable { g.player.toggle() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(40.dp), tint = Color(0xFF00201D))
+                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(40.dp), tint = C39.OnAccent)
                 }
                 SmallIconButton(Icons39.Next, "Następny", tint = C39.Text, size = 38.dp) { g.player.next() }
                 SmallIconButton(

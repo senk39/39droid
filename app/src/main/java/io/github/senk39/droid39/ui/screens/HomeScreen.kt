@@ -62,14 +62,23 @@ import kotlinx.coroutines.launch
 
 /** Pasek górny ekranu: wstecz, tytuł, wyszukiwanie i ustawienia. */
 @Composable
-fun TopBar(title: String, showBack: Boolean = Nav.stack.size > 1, extra: (@Composable () -> Unit)? = null) {
+fun TopBar(
+    title: String,
+    showBack: Boolean = Nav.stack.size > 1,
+    titleExtra: (@Composable () -> Unit)? = null,
+    extra: (@Composable () -> Unit)? = null,
+) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showBack) SmallIconButton(Icons39.Back, "Wstecz", tint = C39.Text) { Nav.back() }
         else Spacer(Modifier.width(12.dp))
-        Text(title, Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f, fill = false).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            titleExtra?.invoke()
+        }
         extra?.invoke()
         SmallIconButton(Icons39.Search, "Szukaj", tint = C39.Text) { Nav.go(Route.Search) }
         SmallIconButton(Icons39.Settings, "Ustawienia", tint = C39.Text) { Nav.go(Route.Settings) }
@@ -128,7 +137,7 @@ fun HomeScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar("39droid", showBack = false, extra = {
+        TopBar("39droid", showBack = false, titleExtra = { NasStatusIcon(nas) }, extra = {
             SmallIconButton(Icons39.Sync, "Synchronizuj", tint = if (sync.running) LocalAccent.current else C39.Text) {
                 g.scope.launch { g.sync.syncNow() }
             }
@@ -264,7 +273,7 @@ private fun HomeButton(label: String, filled: Boolean, onClick: () -> Unit) {
     Text(
         label, Modifier.clip(RoundedCornerShape(50)).background(if (filled) accent else C39.Surface2)
             .clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
-        color = if (filled) Color(0xFF00201D) else C39.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+        color = if (filled) C39.OnAccent else C39.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
     )
 }
 
@@ -275,33 +284,35 @@ private fun colorFor(kind: String) = when (kind) {
     else -> Color(0xFF7FA7D9)
 }
 
+/** Chmurka stanu NAS obok nazwy aplikacji; dotknięcie – Ustawienia → Połączenie z NAS (szczegóły). */
+@Composable
+private fun NasStatusIcon(nas: NasState) {
+    val g = App.graph
+    val (icon, color, desc) = when (val s = if (g.settings.nasConfigured) nas else NasState.NotConfigured) {
+        is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${s.label})")
+        is NasState.Offline -> Triple(Icons39.CloudOff, C39.Warn, "NAS niedostępny")
+        NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold, "NAS nie jest skonfigurowany")
+        NasState.Unknown -> Triple(Icons39.Cloud, C39.Text3, "NAS: jeszcze nie sprawdzono")
+    }
+    SmallIconButton(icon, desc, tint = color, size = 22.dp) { Nav.go(Route.SettingsSection("nas")) }
+}
+
 @Composable
 private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int) {
     val g = App.graph
     val accent = LocalAccent.current
-    val (icon, color, text) = when (val s = if (g.settings.nasConfigured) nas else NasState.NotConfigured) {
-        is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${s.label})")
-        is NasState.Offline -> Triple(Icons39.CloudOff, C39.Text2, "NAS niedostępny – grają tylko utwory na telefonie")
-        NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold,
-            "NAS nie jest skonfigurowany – grają tylko utwory na telefonie (Ustawienia → NAS)")
-        NasState.Unknown -> Triple(Icons39.Cloud, C39.Text3, "NAS: sprawdzanie przy pierwszym użyciu")
-    }
+    // stan połączenia z NAS – ikona chmurki obok nazwy aplikacji (NasStatusIcon); tu tylko biblioteka i synchronizacja
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
-            .background(C39.Surface).clickable { Nav.go(Route.Settings) }.padding(14.dp),
+            .background(C39.Surface).clickable { Nav.go(Route.SettingsSection("sync")) }.padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(20.dp), tint = color)
-            Spacer(Modifier.width(10.dp))
-            Text(text, Modifier.weight(1f), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
         val snapAt = g.settings.snapshotCreated
         val lines = buildList {
             if (snapAt > 0) add("Biblioteka z PC: " + java.text.SimpleDateFormat("d.MM.yyyy HH:mm", java.util.Locale.ROOT).format(java.util.Date(snapAt)))
             if (pending > 0) add("Zmiany czekające na wysłanie: $pending")
             if (localCount > 0) add("Na telefonie: ${T.tracks(localCount)}")
         }
-        if (lines.isNotEmpty()) Text(lines.joinToString(" · "), color = C39.Text3, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        if (lines.isNotEmpty()) Text(lines.joinToString(" · "), color = C39.Text2, fontSize = 12.sp)
         if (running) {
             Spacer(Modifier.height(6.dp))
             Text(message, color = accent, fontSize = 12.sp)

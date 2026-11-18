@@ -63,6 +63,9 @@ object C39 {
     val Green get() = palette.green
     val Lastfm = Color(0xFFD51007)
 
+    /** Tekst i ikony na wypełnionym kolorem akcentu przycisku: biały w jasnym motywie, ciemny w ciemnym. */
+    val OnAccent get() = if (palette.light) Color.White else Color(0xFF00201D)
+
     /** Akcent z okładki bywa jasny – na jasnym tle przyciemniony, żeby tekst i ikony były czytelne. */
     fun readableAccent(c: Color): Color =
         if (palette.light && c.luminance() > 0.32f) lerp(c, Color.Black, 0.38f) else c
