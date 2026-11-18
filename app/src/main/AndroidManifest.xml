@@ -80,6 +80,7 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_bar_info" />
         </receiver>
+        <receiver android:name=".widget.WidgetActionReceiver" android:exported="false" />
         <activity
             android:name=".widget.WidgetConfigActivity"
             android:exported="true"

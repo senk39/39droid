@@ -200,6 +200,19 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun next() = withController { it.seekToNextMediaItem() }
+
+    /**
+     * Następny / poprzedni z widżetu. Gdy usługa dopiero startuje, zapisana kolejka wczytuje się w tle – polecenie czeka
+     * na nią (najwyżej 3 s), zamiast przepaść na pustym odtwarzaczu.
+     */
+    fun skipWhenReady(forward: Boolean, tries: Int = 15): Unit = withController { c ->
+        if (c.mediaItemCount == 0 && tries > 0) {
+            main.postDelayed({ skipWhenReady(forward, tries - 1) }, 200)
+            return@withController
+        }
+        if (forward) c.seekToNextMediaItem()
+        else if (c.currentPosition > 4000) c.seekTo(0) else c.seekToPreviousMediaItem()
+    }
     fun previous() = withController { if (it.currentPosition > 4000) it.seekTo(0) else it.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
     fun skipTo(index: Int) = withController { it.seekToDefaultPosition(index); it.play() }

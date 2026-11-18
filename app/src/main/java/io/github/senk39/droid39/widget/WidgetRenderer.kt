@@ -3,7 +3,6 @@ package io.github.senk39.droid39.widget
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -55,6 +54,34 @@ object WidgetRenderer {
 
     private fun withAlpha(c: Int, a: Float) = Color.argb((255 * a).toInt(), Color.red(c), Color.green(c), Color.blue(c))
 
+    private enum class Bg { NONE, FILL, OUTLINE }
+
+    /** Przycisk jako obrazek [sizeDp]: tło (brak / wypełnione kółko / obrys) i ikona w kolorze. */
+    private fun buttonBitmap(ctx: Context, iconRes: Int, sizeDp: Int, bg: Bg, bgColor: Int, iconColor: Int): Bitmap {
+        val d = ctx.resources.displayMetrics.density
+        val px = (sizeDp * d).toInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
+        val r = px / 2f
+        when (bg) {
+            Bg.FILL -> canvas.drawCircle(r, r, r, paint)
+            Bg.OUTLINE -> {
+                val w = 1.5f * d
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = w
+                canvas.drawCircle(r, r, r - w, paint)
+            }
+            Bg.NONE -> Unit
+        }
+        val icon = ctx.getDrawable(iconRes)?.mutate() ?: return bmp
+        val inset = (px * if (bg == Bg.NONE) 0.18f else 0.26f).toInt()
+        icon.setBounds(inset, inset, px - inset, px - inset)
+        icon.setTint(iconColor)
+        icon.draw(canvas)
+        return bmp
+    }
+
     /** Tekst w wybranym stylu (pogrubienie, kursywa, krój cienki/wąski, wielkie litery). */
     fun styled(text: String, style: String): CharSequence {
         val t = if (style == "caps") text.uppercase() else text
@@ -72,11 +99,17 @@ object WidgetRenderer {
         return s
     }
 
-    /** Przycisk jak w słuchawkach: działa także, gdy aplikacja nie jest uruchomiona (wznawia ostatnią kolejkę). */
+    /** Odtwórz / pauza jak w słuchawkach: działa także, gdy aplikacja nie jest uruchomiona (wznawia ostatnią kolejkę). */
     private fun mediaButton(ctx: Context, keyCode: Int): PendingIntent {
         val i = Intent(Intent.ACTION_MEDIA_BUTTON).setClass(ctx, MediaButtonReceiver::class.java)
             .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
         return PendingIntent.getBroadcast(ctx, keyCode, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    /** „Poprzedni” / „następny” – przez kontroler odtwarzacza aplikacji (WidgetActionReceiver). */
+    private fun appAction(ctx: Context, action: String): PendingIntent {
+        val i = Intent(action).setClass(ctx, WidgetActionReceiver::class.java)
+        return PendingIntent.getBroadcast(ctx, action.hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
     private fun openApp(ctx: Context): PendingIntent {
@@ -125,28 +158,32 @@ object WidgetRenderer {
         text(R.id.w_line2, now.line2, style.line2, c.text2)
         text(R.id.w_line3, if (compact) null else now.line3, style.line3, c.text2)
 
-        // przyciski
-        v.setImageViewResource(R.id.w_play, if (now.playing) R.drawable.ic_w_pause else R.drawable.ic_w_play)
-        fun button(id: Int, bgRes: Int, bgColor: Int?, icon: Int) {
-            v.setInt(id, "setBackgroundResource", bgRes)
-            if (bgRes != 0 && bgColor != null) v.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(bgColor))
-            v.setInt(id, "setColorFilter", icon)
-        }
+        // przyciski – rysowane jako obrazki (kółko + ikona): barwienie tła przez RemoteViews różni się między
+        // launcherami (np. obrys wypełniał się kolorem)
         val onAccent = if (Color.luminance(acc) > 0.55f) 0xFF102020.toInt() else Color.WHITE
         val soft = withAlpha(c.text, 0.16f)
+        val small = if (compact) 36 else 40
+        val big = if (compact) 42 else 48
         for ((id, isPlay) in listOf(R.id.w_prev to false, R.id.w_play to true, R.id.w_next to false)) {
-            when (style.buttons) {
-                "plain" -> button(id, 0, null, c.text)
-                "accent" -> button(id, 0, null, acc)
-                "outline" -> button(id, R.drawable.widget_btn_outline, if (isPlay) acc else c.text2, if (isPlay) acc else c.text)
-                "filled_all" -> if (isPlay) button(id, R.drawable.widget_btn_filled, acc, onAccent)
-                else button(id, R.drawable.widget_btn_filled, soft, c.text)
-                else -> if (isPlay) button(id, R.drawable.widget_btn_filled, acc, onAccent) else button(id, 0, null, c.text)
+            val icon = when {
+                id == R.id.w_prev -> R.drawable.ic_w_prev
+                id == R.id.w_next -> R.drawable.ic_w_next
+                now.playing -> R.drawable.ic_w_pause
+                else -> R.drawable.ic_w_play
             }
+            val (bg, bgColor, iconColor) = when (style.buttons) {
+                "plain" -> Triple(Bg.NONE, 0, c.text)
+                "accent" -> Triple(Bg.NONE, 0, acc)
+                "outline" -> if (isPlay) Triple(Bg.OUTLINE, acc, acc) else Triple(Bg.OUTLINE, c.text2, c.text)
+                "filled_all" -> if (isPlay) Triple(Bg.FILL, acc, onAccent) else Triple(Bg.FILL, soft, c.text)
+                else -> if (isPlay) Triple(Bg.FILL, acc, onAccent) else Triple(Bg.NONE, 0, c.text)
+            }
+            v.setViewPadding(id, 0, 0, 0, 0)
+            v.setImageViewBitmap(id, buttonBitmap(ctx, icon, if (isPlay) big else small, bg, bgColor, iconColor))
         }
-        v.setOnClickPendingIntent(R.id.w_prev, mediaButton(ctx, KeyEvent.KEYCODE_MEDIA_PREVIOUS))
+        v.setOnClickPendingIntent(R.id.w_prev, appAction(ctx, WidgetActionReceiver.ACTION_PREVIOUS))
         v.setOnClickPendingIntent(R.id.w_play, mediaButton(ctx, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-        v.setOnClickPendingIntent(R.id.w_next, mediaButton(ctx, KeyEvent.KEYCODE_MEDIA_NEXT))
+        v.setOnClickPendingIntent(R.id.w_next, appAction(ctx, WidgetActionReceiver.ACTION_NEXT))
         v.setOnClickPendingIntent(R.id.w_root, openApp(ctx))
         return v
     }

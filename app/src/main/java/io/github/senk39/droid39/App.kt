@@ -96,6 +96,7 @@ class Graph(val app: Application) {
             library.snapVersion.drop(1).collect { files.recomputeAvailable(library) }
         }
         Jobs.schedulePeriodicSync(app, settings.bgSyncHours)
+        io.github.senk39.droid39.widget.WidgetUpdater.renderAll(app)          // np. po aktualizacji aplikacji
     }
 
     /**
