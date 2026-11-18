@@ -368,20 +368,77 @@ def build(lib, cfg: dict, out_path: str, applied: dict | None = None, log=print)
     return {"tracks": len(rows), "arts": arts}
 
 
-def fingerprint(path: str) -> str:
-    """Skrót treści migawki bez chwili utworzenia – ta sama treść daje ten sam skrót (eksport bez zmian w bibliotece
-    nie jest publikowany, więc telefon nie pobiera drugi raz tej samej biblioteki)."""
+# ---------------------------------------------------------------------- stan (mała migawka)
+# Często zmieniane części migawki: serduszka, odtworzenia, playlisty, „Do odsłuchania”, gwiazdki, potwierdzenia
+# zmian z telefonu. Gdy zmieniło się tylko to, telefon pobiera mały plik stanu (kilkaset kB) zamiast całej biblioteki
+# (kilkanaście MB) – także przez sieć komórkową.
+STATE_TABLES = ("playlist", "playlist_track", "unlistened", "commit_log", "star", "applied")
+STATE_COLUMNS = {"track": ("heart", "play_count", "last_played"), "node": ("likes",), "tag": ("likes",)}
+STATE_FORMAT = 1
+
+
+def _state_schema() -> str:
+    """Tabele stanu: te same definicje co w pełnej migawce + kolumny stanu utworów, węzłów i tagów."""
+    out = ["CREATE TABLE info(key TEXT PRIMARY KEY, value TEXT)",
+           "CREATE TABLE track_state(id INTEGER PRIMARY KEY, heart INTEGER NOT NULL DEFAULT 0, play_count INTEGER, "
+           "last_played REAL)",
+           "CREATE TABLE node_likes(id INTEGER PRIMARY KEY, likes INTEGER NOT NULL)",
+           "CREATE TABLE tag_likes(id INTEGER PRIMARY KEY, likes INTEGER NOT NULL)"]
+    for stmt in SCHEMA.split(";"):
+        st = stmt.strip()
+        if st.startswith("CREATE TABLE ") and st[len("CREATE TABLE "):].split("(", 1)[0].strip() in STATE_TABLES:
+            out.append(st)
+    return ";\n".join(out) + ";"
+
+
+def build_state(full_path: str, out_path: str) -> None:
+    """Plik stanu wycięty z pełnej migawki `full_path` (tylko utwory, węzły i tagi z niezerowymi wartościami)."""
+    if os.path.exists(out_path):
+        os.remove(out_path)
+    con = sqlite3.connect(out_path)
+    try:
+        con.executescript("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;")
+        con.executescript(_state_schema())
+        con.execute("ATTACH DATABASE ? AS f", (full_path,))
+        con.execute("INSERT INTO track_state SELECT id, heart, play_count, last_played FROM f.track "
+                    "WHERE heart <> 0 OR COALESCE(play_count, 0) <> 0 OR last_played IS NOT NULL")
+        con.execute("INSERT INTO node_likes SELECT id, likes FROM f.node WHERE likes <> 0")
+        con.execute("INSERT INTO tag_likes SELECT id, likes FROM f.tag WHERE COALESCE(likes, 0) <> 0")
+        for t in STATE_TABLES:
+            con.execute(f"INSERT INTO {t} SELECT * FROM f.{t}")
+        con.executemany("INSERT INTO info VALUES(?,?)", [("kind", "state"), ("state_format", str(STATE_FORMAT)),
+                                                          ("created", str(time.time()))])
+        con.commit()
+        con.execute("DETACH DATABASE f")
+        con.execute("VACUUM")
+    finally:
+        con.close()
+
+
+def fingerprint(path: str, skip_tables=(), skip_columns: dict | None = None) -> str:
+    """Skrót treści migawki bez chwili utworzenia – ta sama treść daje ten sam skrót (eksport bez zmian nie jest
+    publikowany, więc telefon nie pobiera drugi raz tego samego). `skip_tables` / `skip_columns` – części pominięte."""
+    skip_columns = skip_columns or {}
     con = sqlite3.connect(path)
     h = hashlib.sha256()
     try:
         for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall():
-            h.update(repr(t).encode("utf-8"))
-            q = f'SELECT * FROM "{t}"' + (" WHERE key <> 'created'" if t == "info" else "")
+            if t in skip_tables:
+                continue
+            cols = [r[1] for r in con.execute(f'PRAGMA table_info("{t}")') if r[1] not in skip_columns.get(t, ())]
+            h.update(repr((t, cols)).encode("utf-8"))
+            q = f'SELECT {", ".join(chr(34) + c + chr(34) for c in cols)} FROM "{t}"' + (
+                " WHERE key <> 'created'" if t == "info" else "")
             for row in con.execute(q):
                 h.update(repr(row).encode("utf-8"))
     finally:
         con.close()
     return h.hexdigest()
+
+
+def base_fingerprint(path: str) -> str:
+    """Skrót części rzadko zmienianej (utwory, VocaDB, kategorie…) – bez stanu."""
+    return fingerprint(path, STATE_TABLES, STATE_COLUMNS)
 
 
 def _icon(L, name: str) -> str | None:

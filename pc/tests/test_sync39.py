@@ -13,11 +13,31 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
 PLAYER_DIR = os.environ.get("SYNC39_PLAYER39_DIR", r"D:\Claude Projects\39player")
+
+# Kopia zapytań, którymi 39droid nakłada plik stanu na pełną bibliotekę (SyncManager.APPLY_STATE) – test sprawdza, że
+# wynik jest taki sam jak nowa pełna biblioteka.
+PHONE_APPLY_STATE = [
+    "UPDATE track SET heart = 0, play_count = 0, last_played = NULL",
+    "UPDATE track SET heart = (SELECT s.heart FROM st.track_state s WHERE s.id = track.id), "
+    "play_count = (SELECT s.play_count FROM st.track_state s WHERE s.id = track.id), "
+    "last_played = (SELECT s.last_played FROM st.track_state s WHERE s.id = track.id) "
+    "WHERE id IN (SELECT id FROM st.track_state)",
+    "UPDATE node SET likes = 0",
+    "UPDATE node SET likes = (SELECT s.likes FROM st.node_likes s WHERE s.id = node.id) "
+    "WHERE id IN (SELECT id FROM st.node_likes)",
+    "UPDATE tag SET likes = 0",
+    "UPDATE tag SET likes = (SELECT s.likes FROM st.tag_likes s WHERE s.id = tag.id) "
+    "WHERE id IN (SELECT id FROM st.tag_likes)",
+] + [q for t in ("playlist", "playlist_track", "unlistened", "commit_log", "star", "applied")
+     for q in (f"DELETE FROM {t}", f"INSERT INTO {t} SELECT * FROM st.{t}")] + [
+    "UPDATE info SET value = (SELECT value FROM st.info WHERE key = 'created') WHERE key = 'created'",
+]
 
 
 @unittest.skipUnless(os.path.isdir(os.path.join(PLAYER_DIR, "player39")), "brak 39player")
@@ -125,29 +145,60 @@ class Sync39Test(unittest.TestCase):
         self.assertEqual(con.execute("SELECT COUNT(*) FROM track WHERE rel LIKE '%\\%' OR rel LIKE '_:%'").fetchone()[0], 0)
         con.close()
 
-    def test_unchanged_library_is_not_republished(self):
-        """Eksport bez zmian w bibliotece daje ten sam skrót treści (telefon nie pobiera drugi raz tej samej
-        biblioteki); nowe potwierdzenie zmian z telefonu zmienia skrót."""
+    def test_publish_full_then_state_only(self):
+        """Pierwszy eksport – pełna biblioteka i stan; bez zmian – nic; zmiana serduszek / potwierdzeń – tylko mały
+        plik stanu. Stan nałożony na starą pełną bibliotekę (tak jak robi to telefon) daje nową bibliotekę."""
         import time
         from sync39 import snapshot
-        from sync39.__main__ import _published
-        a, b, c = (os.path.join(self.tmp, f"fp-{x}.db") for x in "abc")
-        snapshot.build(self.lib, self.cfg, a, {"dev": {"seq": 3}}, log=lambda *x: None)
-        time.sleep(0.05)                                   # inna chwila utworzenia
-        snapshot.build(self.lib, self.cfg, b, {"dev": {"seq": 3}}, log=lambda *x: None)
-        snapshot.build(self.lib, self.cfg, c, {"dev": {"seq": 4}}, log=lambda *x: None)
-        fa = snapshot.fingerprint(a)
-        self.assertEqual(fa, snapshot.fingerprint(b))
-        self.assertNotEqual(fa, snapshot.fingerprint(c))
-        sync = os.path.join(self.tmp, "fp-sync")
-        os.makedirs(os.path.join(sync, "snapshot"))
-        self.assertFalse(_published(sync, fa))             # brak manifestu
-        with open(os.path.join(sync, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump({"snapshot": "snapshot/library-1.db.gz", "content": fa}, f)
-        self.assertFalse(_published(sync, fa))             # manifest wskazuje nieistniejący plik
-        open(os.path.join(sync, "snapshot", "library-1.db.gz"), "wb").close()
-        self.assertTrue(_published(sync, fa))
-        self.assertFalse(_published(sync, snapshot.fingerprint(c)))
+        from sync39.__main__ import publish
+        quiet = lambda *x: None                            # noqa: E731
+        sync = os.path.join(self.tmp, "pub-sync")
+        os.makedirs(sync)
+        work = os.path.join(self.tmp, "pub-work")
+        os.makedirs(work)
+        a, b, c = (os.path.join(self.tmp, f"pub-{x}.db") for x in "abc")
+        snapshot.build(self.lib, self.cfg, a, {"dev": {"seq": 3}}, log=quiet)
+        self.assertEqual(publish(sync, a, work, 1, {"dev": {"seq": 3}}, {}, log=quiet), "full")
+        m1 = json.loads(Path(sync, "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(m1["state_base"], m1["sha256"])
+        self.assertTrue(os.path.isfile(os.path.join(sync, m1["state"])))
+        self.assertLess(m1["state_size"], m1["size"] / 5)
+
+        time.sleep(1.1)                                    # inna chwila utworzenia i inna nazwa pliku
+        snapshot.build(self.lib, self.cfg, b, {"dev": {"seq": 3}}, log=quiet)
+        self.assertEqual(publish(sync, b, work, 1, {"dev": {"seq": 3}}, {}, log=quiet), "none")
+
+        snapshot.build(self.lib, self.cfg, c, {"dev": {"seq": 4}}, log=quiet)
+        con = sqlite3.connect(c)                           # serduszko zmienione na PC
+        tid = con.execute("SELECT id FROM track WHERE heart = 0 LIMIT 1").fetchone()[0]
+        con.execute("UPDATE track SET heart = 2, play_count = play_count + 5, last_played = 1794950000 WHERE id = ?",
+                    (tid,))
+        con.execute("UPDATE node SET likes = likes + 1 WHERE id IN (SELECT node_id FROM node_track WHERE track_id = ?)",
+                    (tid,))
+        con.commit()
+        con.close()
+        self.assertEqual(publish(sync, c, work, 1, {"dev": {"seq": 4}}, {}, log=quiet), "state")
+        m2 = json.loads(Path(sync, "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(m2["snapshot"], m1["snapshot"])   # pełna biblioteka ta sama
+        self.assertEqual(m2["sha256"], m1["sha256"])
+        self.assertNotEqual(m2["state"], m1["state"])
+        self.assertEqual(m2["state_base"], m1["sha256"])
+        self.assertEqual(m2["applied"], {"dev": 4})
+
+        # telefon: kopia starej pełnej biblioteki + nowy stan (te same zapytania co SyncManager.applyState w 39droid)
+        phone = os.path.join(self.tmp, "pub-phone.db")
+        shutil.copy(a, phone)
+        state = os.path.join(self.tmp, "pub-state.db")
+        with gzip.open(os.path.join(sync, m2["state"])) as src, open(state, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        con = sqlite3.connect(phone)
+        con.execute("ATTACH DATABASE ? AS st", (state,))
+        with con:
+            for q in PHONE_APPLY_STATE:
+                con.execute(q)
+        con.execute("DETACH DATABASE st")
+        con.close()
+        self.assertEqual(snapshot.fingerprint(phone), snapshot.fingerprint(c))
 
     def test_gzip_roundtrip_and_art_key(self):
         from sync39 import snapshot

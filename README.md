@@ -188,7 +188,14 @@ a migawka przekazuje to telefonowi – zmiany nie zginą ani nie zostaną zastos
 telefon pokazuje je u siebie (np. nowe ♥ jest widoczne od razu). Zmiany, których PC nie mógł zastosować (np. dodanie
 do playlisty usuniętej na PC, serduszko dla utworu, którego na PC już nie ma), trafiają z powodem do
 `39sync/state/rejected-<telefon>.json` – telefon ostrzega na ekranie głównym i wymienia je w Ustawieniach →
-Synchronizacja z 39player. Eksport bez zmian w bibliotece nie publikuje nowej migawki (skrót treści w manifeście).
+Synchronizacja z 39player.
+
+Migawka ma dwie części: pełną bibliotekę (`snapshot/library-*.db.gz`, ok. 12 MB – utwory, VocaDB, kategorie) i stan
+(`snapshot/state-*.db.gz`, ok. 0,5 MB – serduszka, odtworzenia, playlisty, „Do odsłuchania”, gwiazdki, potwierdzenia).
+Pełna biblioteka jest publikowana tylko po zmianach w części rzadko zmienianej, a gdy nic się nie zmieniło – nic
+(skróty treści `base_content` / `state_content` w manifeście). Telefon z aktualną pełną biblioteką pobiera sam stan
+i nakłada go na nią – także przez sieć komórkową; pełna biblioteka w sieci komórkowej czeka na Wi-Fi (chyba że
+użytkownik sam wybierze „Synchronizuj teraz”).
 
 Testy: `cd pc && python -m unittest discover -s tests -v` (działają na kopii danych 39player).
 

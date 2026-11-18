@@ -161,9 +161,10 @@ class LiveLink(
                     lastPc = now
                     runCatching { refreshPc() }
                 }
-                if (now - lastSync >= SYNC_EVERY_MS && !nas.metered()) {
+                if (now - lastSync >= SYNC_EVERY_MS) {
                     lastSync = now
-                    runCatching { sync.quickSync() }
+                    // w sieci komórkowej tylko zmiany i mały plik stanu; pełna biblioteka – przez Wi-Fi
+                    runCatching { sync.quickSync(allowFull = !nas.metered()) }
                 }
             }
             delay(2_000)

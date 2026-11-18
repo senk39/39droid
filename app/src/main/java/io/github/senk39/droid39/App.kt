@@ -89,7 +89,7 @@ class Graph(val app: Application) {
                 files.scanMirrors()
                 files.recomputeAvailable(library)
             }
-            if (settings.nasConfigured && settings.autoSync && !nas.metered()) sync.syncNow()
+            if (settings.nasConfigured && settings.autoSync) sync.syncNow(allowFull = !nas.metered())
         }
         scope.launch {
             library.snapVersion.drop(1).collect { files.recomputeAvailable(library) }

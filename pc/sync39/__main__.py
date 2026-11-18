@@ -91,39 +91,7 @@ def cmd_export(cfg, args) -> int:
         try:
             db = os.path.join(work, "library.db")
             stats = snapshot.build(lib, pcfg, db, applied, log)
-            content = snapshot.fingerprint(db)
-            if not args.force and _published(sync_dir, content):
-                log("  biblioteka bez zmian od poprzedniego eksportu – migawka nie jest publikowana ponownie")
-                if not args.no_art:
-                    art.export(lib, sync_dir, stats["arts"], int(cfg.get("art_size", 512)),
-                               int(cfg.get("art_quality", 82)), args.refresh_art, args.art_limit, log)
-                log(f"Gotowe w {time.time() - t0:.0f} s.")
-                return 0
-            stamp = time.strftime("%Y%m%d-%H%M%S")
-            name = f"library-{stamp}.db.gz"
-            gz = os.path.join(work, name)
-            with open(db, "rb") as src, gzip.open(gz, "wb", compresslevel=6) as dst:
-                shutil.copyfileobj(src, dst, 1 << 20)
-            raw = open(gz, "rb").read()
-            snap_dir = os.path.join(sync_dir, "snapshot")
-            os.makedirs(snap_dir, exist_ok=True)
-            _atomic_write(os.path.join(snap_dir, name), raw)
-            manifest = {
-                "format": FORMAT, "generator": f"sync39 {VERSION}", "created": time.time(),
-                "snapshot": f"snapshot/{name}", "size": len(raw), "db_size": os.path.getsize(db),
-                "sha256": hashlib.sha256(raw).hexdigest(), "content": content, "tracks": stats["tracks"],
-                "applied": {k: v.get("seq", 0) for k, v in applied.items()},
-            }
-            _atomic_write(os.path.join(sync_dir, "manifest.json"),
-                          json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
-            log(f"  opublikowano {name} ({len(raw) / 1e6:.1f} MB)")
-            keep = max(1, int(cfg.get("keep_snapshots", 2)))
-            olds = sorted(x for x in os.listdir(snap_dir) if x.startswith("library-") and x.endswith(".db.gz"))
-            for x in olds[:-keep]:
-                try:
-                    os.remove(os.path.join(snap_dir, x))
-                except OSError:
-                    pass
+            publish(sync_dir, db, work, stats["tracks"], applied, cfg, force=args.force)
             if not args.no_art:
                 art.export(lib, sync_dir, stats["arts"], int(cfg.get("art_size", 512)),
                            int(cfg.get("art_quality", 82)), args.refresh_art, args.art_limit, log)
@@ -137,14 +105,85 @@ def cmd_export(cfg, args) -> int:
     return 0
 
 
-def _published(sync_dir: str, content: str) -> bool:
-    """Na NAS jest już migawka o tej treści (manifest wskazuje istniejący plik)."""
+def _read_manifest(sync_dir: str) -> dict:
     try:
         with open(os.path.join(sync_dir, "manifest.json"), encoding="utf-8") as f:
             m = json.load(f)
+        return m if isinstance(m, dict) else {}
     except (OSError, ValueError):
-        return False
-    return m.get("content") == content and os.path.isfile(os.path.join(sync_dir, m.get("snapshot") or "-"))
+        return {}
+
+
+def _gzip_file(src_path: str, gz_path: str) -> bytes:
+    with open(src_path, "rb") as src, gzip.open(gz_path, "wb", compresslevel=6) as dst:
+        shutil.copyfileobj(src, dst, 1 << 20)
+    with open(gz_path, "rb") as f:
+        return f.read()
+
+
+def _prune(snap_dir: str, prefix: str, keep: int) -> None:
+    olds = sorted(x for x in os.listdir(snap_dir) if x.startswith(prefix) and x.endswith(".db.gz"))
+    for x in olds[:-keep]:
+        try:
+            os.remove(os.path.join(snap_dir, x))
+        except OSError:
+            pass
+
+
+def publish(sync_dir: str, db: str, work: str, tracks: int, applied: dict, cfg: dict, force: bool = False,
+            log=log) -> str:
+    """Publikuje migawkę na NAS w dwóch częściach:
+      * pełna biblioteka (snapshot/library-*.db.gz) – tylko gdy zmieniła się część rzadko zmieniana (utwory, VocaDB,
+        kategorie…),
+      * stan (snapshot/state-*.db.gz, kilkaset kB) – serduszka, odtworzenia, playlisty, „Do odsłuchania”, gwiazdki,
+        potwierdzenia; telefon z tą samą pełną biblioteką (`state_base` = jej sha256) pobiera tylko ten plik.
+    Zwraca "full", "state" albo "none" (nic się nie zmieniło)."""
+    base = snapshot.base_fingerprint(db)
+    state_db = os.path.join(work, "state.db")
+    snapshot.build_state(db, state_db)
+    state = snapshot.fingerprint(state_db)
+    old = _read_manifest(sync_dir)
+
+    def exists(key: str) -> bool:
+        return bool(old.get(key)) and os.path.isfile(os.path.join(sync_dir, old[key]))
+
+    same_base = not force and old.get("base_content") == base and exists("snapshot")
+    if same_base and old.get("state_content") == state and exists("state"):
+        log("  biblioteka bez zmian od poprzedniego eksportu – nic nie jest publikowane")
+        return "none"
+    snap_dir = os.path.join(sync_dir, "snapshot")
+    os.makedirs(snap_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    now = time.time()
+    if same_base:
+        manifest = dict(old)
+        what = "state"
+    else:
+        name = f"library-{stamp}.db.gz"
+        raw = _gzip_file(db, os.path.join(work, name))
+        _atomic_write(os.path.join(snap_dir, name), raw)
+        manifest = {"created": now, "snapshot": f"snapshot/{name}", "size": len(raw), "db_size": os.path.getsize(db),
+                    "sha256": hashlib.sha256(raw).hexdigest(), "base_content": base}
+        log(f"  opublikowano pełną bibliotekę {name} ({len(raw) / 1e6:.1f} MB)")
+        what = "full"
+    sname = f"state-{stamp}.db.gz"
+    sraw = _gzip_file(state_db, os.path.join(work, sname))
+    _atomic_write(os.path.join(snap_dir, sname), sraw)
+    manifest.update({
+        "format": FORMAT, "generator": f"sync39 {VERSION}", "tracks": tracks,
+        "state": f"snapshot/{sname}", "state_size": len(sraw), "state_sha256": hashlib.sha256(sraw).hexdigest(),
+        "state_content": state, "state_base": manifest["sha256"], "state_created": now,
+        "applied": {k: v.get("seq", 0) for k, v in applied.items()},
+    })
+    manifest.pop("content", None)                                  # klucz sprzed podziału na bibliotekę i stan
+    _atomic_write(os.path.join(sync_dir, "manifest.json"),
+                  json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
+    if what == "state":
+        log(f"  zmienił się tylko stan (serduszka, odtworzenia, playlisty) – opublikowano {sname} "
+            f"({len(sraw) / 1024:.0f} kB)")
+    _prune(snap_dir, "library-", max(1, int(cfg.get("keep_snapshots", 2))))
+    _prune(snap_dir, "state-", 4)
+    return what
 
 
 def _guard_running(force: bool) -> None:

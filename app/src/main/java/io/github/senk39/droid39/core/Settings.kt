@@ -139,6 +139,8 @@ class Settings(context: Context) {
     var lastSyncAt by long("last_sync_at", 0)
     var lastSyncError by str("last_sync_error", "")
     var snapshotSha by str("snapshot_sha", "")
+    /** Plik stanu z PC (serduszka, odtworzenia, playlisty) nałożony na bibliotekę [snapshotSha]. */
+    var stateSha by str("state_sha", "")
     var snapshotCreated by long("snapshot_created", 0)
     var lastMirrorScan by long("last_mirror_scan", 0)
 

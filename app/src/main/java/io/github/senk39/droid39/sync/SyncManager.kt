@@ -1,6 +1,7 @@
 package io.github.senk39.droid39.sync
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.media3.common.util.UnstableApi
 import io.github.senk39.droid39.BuildConfig
 import io.github.senk39.droid39.core.Settings
@@ -68,21 +69,44 @@ class SyncManager(
         /** Zmian w jednym pliku dziennika. */
         const val CHUNK = 500
         const val KV_REJECTED = "rejected_json"
+
+        /** Nałożenie pliku stanu (dołączonego jako „st”) na pełną bibliotekę – kopia w teście sync39. */
+        val APPLY_STATE: List<String> = listOf(
+            "UPDATE track SET heart = 0, play_count = 0, last_played = NULL",
+            "UPDATE track SET heart = (SELECT s.heart FROM st.track_state s WHERE s.id = track.id), " +
+                "play_count = (SELECT s.play_count FROM st.track_state s WHERE s.id = track.id), " +
+                "last_played = (SELECT s.last_played FROM st.track_state s WHERE s.id = track.id) " +
+                "WHERE id IN (SELECT id FROM st.track_state)",
+            "UPDATE node SET likes = 0",
+            "UPDATE node SET likes = (SELECT s.likes FROM st.node_likes s WHERE s.id = node.id) " +
+                "WHERE id IN (SELECT id FROM st.node_likes)",
+            "UPDATE tag SET likes = 0",
+            "UPDATE tag SET likes = (SELECT s.likes FROM st.tag_likes s WHERE s.id = tag.id) " +
+                "WHERE id IN (SELECT id FROM st.tag_likes)",
+        ) + listOf("playlist", "playlist_track", "unlistened", "commit_log", "star", "applied").flatMap { t ->
+            listOf("DELETE FROM $t", "INSERT INTO $t SELECT * FROM st.$t")
+        } + "UPDATE info SET value = (SELECT value FROM st.info WHERE key = 'created') WHERE key = 'created'"
     }
 
     /** Pełna synchronizacja. Zwraca opis wyniku. */
-    suspend fun syncNow(): Result<String> = withContext(Dispatchers.IO) {
+    /** [allowFull] = false – pełna biblioteka (kilkanaście MB) czeka na Wi-Fi; zmiany i mały plik stanu idą od razu. */
+    suspend fun syncNow(allowFull: Boolean = true): Result<String> = withContext(Dispatchers.IO) {
         mutex.withLock {
             _status.value = SyncStatus(true, "Łączenie z NAS…")
             try {
                 val sent = pushLocked()
                 _status.value = SyncStatus(true, "Sprawdzanie migawki biblioteki…")
-                val pulled = pullLocked()
+                val pulled = pullLocked(allowFull)
                 val newlyRejected = runCatching { fetchRejected() }.getOrDefault(0)
                 settings.lastSyncAt = System.currentTimeMillis()
                 settings.lastSyncError = ""
                 val msg = buildString {
-                    append(if (pulled) "Pobrano nową bibliotekę z PC" else "Biblioteka aktualna")
+                    val deferred = deferredFullBytes
+                    append(when {
+                        pulled -> "Pobrano zmiany z PC"
+                        deferred > 0 -> "Nowa biblioteka z PC (${kb(deferred.toInt())}) – pobierze się przez Wi-Fi"
+                        else -> "Biblioteka aktualna"
+                    })
                     if (sent > 0) append(" · wysłano zmian: $sent")
                     if (newlyRejected > 0) append(" · PC nie przyjął zmian: $newlyRejected")
                 }
@@ -119,6 +143,7 @@ class SyncManager(
                 }
                 library.install(fresh)                      // sprawdza format; zły plik – wyjątek z opisem
                 settings.snapshotSha = ""                   // następna synchronizacja z NAS podmieni ją na aktualną
+                settings.stateSha = ""
                 settings.snapshotCreated = ((library.withSnap { it.createdAt } ?: 0.0) * 1000).toLong()
                 files.recomputeAvailable(library)
                 val n = library.withSnap { it.trackCount } ?: 0
@@ -142,7 +167,7 @@ class SyncManager(
      * Szybkie sprawdzenie (co kilkadziesiąt sekund, gdy aplikacja jest na ekranie albo gra): pełna synchronizacja
      * tylko wtedy, gdy na NAS jest nowa migawka z PC albo telefon ma niewysłane zmiany. Zwraca true, gdy była.
      */
-    suspend fun quickSync(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun quickSync(allowFull: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         if (mutex.isLocked || !settings.nasConfigured) return@withContext false
         val manifest = try {
             JSONObject(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
@@ -151,9 +176,13 @@ class SyncManager(
         }
         val sha = manifest.optString("sha256")
         val newSnapshot = sha.isNotEmpty() && sha != settings.snapshotSha
+        val stateSha = manifest.optString("state_sha256")
+        val newState = !newSnapshot && stateSha.isNotEmpty() && stateSha != settings.stateSha &&
+            manifest.optString("state_base") == settings.snapshotSha
         val unsent = library.local.maxSeq() > settings.uploadedSeq
-        if (!newSnapshot && !unsent) return@withContext false
-        syncNow()
+        // w sieci komórkowej pełna biblioteka czeka na Wi-Fi – bez ponawiania co kilkadziesiąt sekund
+        if (!(newSnapshot && allowFull) && !newState && !unsent) return@withContext false
+        syncNow(allowFull)
         true
     }
 
@@ -300,7 +329,13 @@ class SyncManager(
     }
 
     // ---------------------------------------------------------------- migawka z PC ← NAS
-    private fun pullLocked(): Boolean {
+    /**
+     * Nowa biblioteka z PC. sync39 publikuje ją w dwóch częściach: pełna biblioteka (kilkanaście MB, tylko po zmianach
+     * w utworach, VocaDB, kategoriach) i stan (kilkaset kB: serduszka, odtworzenia, playlisty, „Do odsłuchania”,
+     * potwierdzenia). Gdy pełna biblioteka na telefonie jest aktualna, pobierany jest tylko stan.
+     * [allowFull] = false (sieć komórkowa w tle) – pełna biblioteka czeka na Wi-Fi, stan jest pobierany od razu.
+     */
+    private fun pullLocked(allowFull: Boolean = true): Boolean {
         val manifest = try {
             JSONObject(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
         } catch (e: FileNotFoundException) {
@@ -309,13 +344,89 @@ class SyncManager(
         val format = manifest.optInt("format", 0)
         if (format != 1) throw IllegalStateException("Migawka w formacie $format – zaktualizuj aplikację")
         val sha = manifest.optString("sha256")
-        if (sha.isNotEmpty() && sha == settings.snapshotSha && library.ready) return false
-        val rel = manifest.getString("snapshot")
-        val total = manifest.optLong("size", 0)
+        val stateRel = manifest.optString("state")
+        val stateSha = manifest.optString("state_sha256")
+        val stateBase = manifest.optString("state_base")
+        deferredFullBytes = 0
+        if (!(sha.isNotEmpty() && sha == settings.snapshotSha && library.ready)) {
+            if (!allowFull) {
+                deferredFullBytes = manifest.optLong("size", 1)
+                return false
+            }
+            val dir = library.snapshotDir()
+            val fresh = File(dir, "incoming.db")
+            val got = downloadGz(manifest.getString("snapshot"), manifest.optLong("size", 0), "Pobieranie biblioteki…", fresh)
+            if (sha.isNotEmpty() && got != sha) {
+                fresh.delete()
+                throw IllegalStateException("Uszkodzona migawka (suma kontrolna) – spróbuj ponownie")
+            }
+            _status.value = SyncStatus(true, "Wczytywanie biblioteki…")
+            library.install(fresh)
+            settings.snapshotSha = sha
+            // pełna biblioteka zawiera stan z chwili eksportu – plik stanu z tego samego eksportu nie jest potrzebny
+            settings.stateSha = if (stateBase == sha) stateSha else ""
+            settings.snapshotCreated = (manifest.optDouble("created", 0.0) * 1000).toLong()
+            files.recomputeAvailable(library)
+            return true
+        }
+        if (stateRel.isEmpty() || stateSha.isEmpty() || stateSha == settings.stateSha || stateBase != settings.snapshotSha) {
+            return false
+        }
+        applyState(stateRel, stateSha, manifest.optLong("state_size", 0))
+        settings.stateSha = stateSha
+        settings.snapshotCreated = (manifest.optDouble("state_created", 0.0) * 1000).toLong()
+        return true
+    }
+
+    /** Ile bajtów ma pełna biblioteka odłożona do Wi-Fi (0 – nic nie czeka). */
+    @Volatile private var deferredFullBytes = 0L
+
+    /**
+     * Mały plik stanu nałożony na kopię obecnej biblioteki (te same zapytania sprawdza test sync39
+     * `test_publish_full_then_state_only`), potem zwykła podmiana – widoki odświeżają się jak po pełnej bibliotece.
+     */
+    private fun applyState(rel: String, sha: String, total: Long) {
         val dir = library.snapshotDir()
+        val state = File(dir, "state.db")
         val fresh = File(dir, "incoming.db")
+        try {
+            val got = downloadGz(rel, total, "Pobieranie zmian z PC…", state)
+            if (got != sha) throw IllegalStateException("Uszkodzony plik zmian z PC (suma kontrolna) – spróbuj ponownie")
+            _status.value = SyncStatus(true, "Nakładanie zmian z PC…")
+            library.snapFile.copyTo(fresh, overwrite = true)
+            val db = SQLiteDatabase.openDatabase(fresh.path, null, SQLiteDatabase.OPEN_READWRITE)
+            try {
+                db.execSQL("ATTACH DATABASE ? AS st", arrayOf(state.path))
+                val stateFormat = db.rawQuery("SELECT value FROM st.info WHERE key = 'state_format'", null).use {
+                    if (it.moveToFirst()) it.getString(0).toIntOrNull() ?: 0 else 0
+                }
+                if (stateFormat != 1) throw IllegalStateException("Plik zmian z PC w formacie $stateFormat – zaktualizuj aplikację")
+                db.beginTransaction()
+                try {
+                    for (q in APPLY_STATE) db.execSQL(q)
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+                db.execSQL("DETACH DATABASE st")
+            } finally {
+                db.close()
+            }
+            File(fresh.path + "-journal").delete()
+            library.install(fresh)
+        } catch (e: Exception) {
+            fresh.delete()
+            throw e
+        } finally {
+            state.delete()
+            File(state.path + "-journal").delete()
+        }
+    }
+
+    /** Pobiera plik .gz z folderu synchronizacji, rozpakowuje do [dest]. Zwraca sha256 pobranego (spakowanego) pliku. */
+    private fun downloadGz(rel: String, total: Long, label: String, dest: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        _status.value = SyncStatus(true, "Pobieranie biblioteki…", 0f)
+        _status.value = SyncStatus(true, label, if (total > 0) 0f else null)
         nas.use { fs ->
             fs.openStream(RemoteFs.join(syncDir(), rel)).use { raw ->
                 val counting = object : java.io.FilterInputStream(raw) {
@@ -324,7 +435,7 @@ class SyncManager(
                     private fun progress() {
                         if (total > 0 && n - lastReport > 256 * 1024) {
                             lastReport = n
-                            _status.value = SyncStatus(true, "Pobieranie biblioteki…", (n.toFloat() / total).coerceIn(0f, 1f))
+                            _status.value = SyncStatus(true, label, (n.toFloat() / total).coerceIn(0f, 1f))
                         }
                     }
                     override fun read(b: ByteArray, off: Int, len: Int): Int {
@@ -350,19 +461,9 @@ class SyncManager(
                         return if (r < 0) 0 else r.toLong()
                     }
                 }
-                GZIPInputStream(counting, 1 shl 16).use { gz -> fresh.outputStream().use { gz.copyTo(it, 1 shl 16) } }
+                GZIPInputStream(counting, 1 shl 16).use { gz -> dest.outputStream().use { gz.copyTo(it, 1 shl 16) } }
             }
         }
-        val got = digest.digest().joinToString("") { "%02x".format(it) }
-        if (sha.isNotEmpty() && got != sha) {
-            fresh.delete()
-            throw IllegalStateException("Uszkodzona migawka (suma kontrolna) – spróbuj ponownie")
-        }
-        _status.value = SyncStatus(true, "Wczytywanie biblioteki…")
-        library.install(fresh)
-        settings.snapshotSha = sha
-        settings.snapshotCreated = (manifest.optDouble("created", 0.0) * 1000).toLong()
-        files.recomputeAvailable(library)
-        return true
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
