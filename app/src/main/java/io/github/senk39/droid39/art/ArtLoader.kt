@@ -31,7 +31,8 @@ class ArtLoader(
     private val nas: Nas,
     private val files: LocalFiles,
 ) {
-    private val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "art").apply { mkdirs() }
+    /** Folder miniatur – w miejscu na dane wybranym w ustawieniach (karta SD albo pamięć wewnętrzna). */
+    private val dir: File get() = files.artDir()
     private val mem = object : LruCache<String, Bitmap>(64 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }

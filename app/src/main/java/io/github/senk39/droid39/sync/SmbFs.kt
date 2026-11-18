@@ -151,6 +151,14 @@ class SmbFs(
         ).use { f -> f.rename(smb(to), true) }
     }
 
+    override fun delete(path: String) {
+        try {
+            share().rm(smb(path))
+        } catch (e: SMBApiException) {
+            if (!e.status.name.contains("NOT_FOUND")) throw IOException("SMB ${e.status}: $path", e)
+        }
+    }
+
     override fun dataSourceFactory(): DataSource.Factory = DataSource.Factory { SmbDataSource(this) }
 
     override fun uriFor(path: String): Uri = Uri.Builder().scheme("smb").authority(host).appendEncodedPath(

@@ -15,9 +15,16 @@ import kotlin.concurrent.write
  * „Do odsłuchania”, odtworzenia, playlisty). Zmiany trafiają do dziennika (LocalDb.op), który SyncManager wysyła
  * na NAS; gdy nowa migawka potwierdzi ich zastosowanie na PC, nakładka je porzuca.
  */
-class Library(context: Context, private val settings: Settings, val local: LocalDb) {
-    private val snapDir = File(context.filesDir, "snapshot").apply { mkdirs() }
-    val snapFile = File(snapDir, "library.db")
+class Library(
+    context: Context,
+    private val settings: Settings,
+    val local: LocalDb,
+    /** Folder migawki – w miejscu na dane wybranym w ustawieniach (karta SD albo pamięć wewnętrzna). */
+    private val snapDir: () -> File = { File(context.filesDir, "snapshot").apply { mkdirs() } },
+) {
+    val snapFile: File get() = File(snapDir(), "library.db")
+
+    fun snapshotDir(): File = snapDir()
     private val lock = ReentrantReadWriteLock()
     @Volatile private var snapshot: SnapshotDb? = null
 
@@ -60,6 +67,24 @@ class Library(context: Context, private val settings: Settings, val local: Local
         }
         afterSnapshotChange()
     }
+
+    /** Zamyka migawkę (np. przed przeniesieniem na inny wolumin); `open()` otwiera ją z bieżącego miejsca. */
+    fun close() {
+        lock.write {
+            snapshot?.close()
+            snapshot = null
+        }
+        afterSnapshotChange()
+    }
+
+    /** Odtworzenia (z PC i z telefonu) wg ścieżki: klucz ścieżki → (liczba, ostatnie odtworzenie w s). */
+    fun playStats(): Map<String, Pair<Int, Double>> = withSnap { s ->
+        val plays = playOv
+        val last = lastPlayOv
+        s.fileStats().associate { f ->
+            Text.relKey(f.rel) to ((f.plays + (plays[f.id] ?: 0)) to maxOf(f.lastPlayed, (last[f.id] ?: 0L) / 1000.0))
+        }
+    } ?: emptyMap()
 
     /** Podmienia migawkę na nowo pobraną (plik `fresh` zostaje przeniesiony). */
     fun install(fresh: File) {

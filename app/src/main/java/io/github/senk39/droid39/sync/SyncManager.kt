@@ -89,7 +89,7 @@ class SyncManager(
     suspend fun importFromUri(uri: android.net.Uri): Result<String> = withContext(Dispatchers.IO) {
         mutex.withLock {
             _status.value = SyncStatus(true, "Wczytywanie biblioteki z pliku…")
-            val dir = File(context.filesDir, "snapshot").apply { mkdirs() }
+            val dir = library.snapshotDir()
             val fresh = File(dir, "incoming.db")
             try {
                 val raw = context.contentResolver.openInputStream(uri)
@@ -120,6 +120,25 @@ class SyncManager(
                 Result.failure(e)
             }
         }
+    }
+
+    /**
+     * Szybkie sprawdzenie (co kilkadziesiąt sekund, gdy aplikacja jest na ekranie albo gra): pełna synchronizacja
+     * tylko wtedy, gdy na NAS jest nowa migawka z PC albo telefon ma niewysłane zmiany. Zwraca true, gdy była.
+     */
+    suspend fun quickSync(): Boolean = withContext(Dispatchers.IO) {
+        if (mutex.isLocked || !settings.nasConfigured) return@withContext false
+        val manifest = try {
+            JSONObject(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
+        } catch (e: FileNotFoundException) {
+            return@withContext false
+        }
+        val sha = manifest.optString("sha256")
+        val newSnapshot = sha.isNotEmpty() && sha != settings.snapshotSha
+        val unsent = library.local.maxSeq() > settings.uploadedSeq
+        if (!newSnapshot && !unsent) return@withContext false
+        syncNow()
+        true
     }
 
     /** Wysłanie dziennika z opóźnieniem (zbiera kilka szybkich zmian w jeden plik). */
@@ -209,7 +228,7 @@ class SyncManager(
         if (sha.isNotEmpty() && sha == settings.snapshotSha && library.ready) return false
         val rel = manifest.getString("snapshot")
         val total = manifest.optLong("size", 0)
-        val dir = File(context.filesDir, "snapshot").apply { mkdirs() }
+        val dir = library.snapshotDir()
         val fresh = File(dir, "incoming.db")
         val digest = MessageDigest.getInstance("SHA-256")
         _status.value = SyncStatus(true, "Pobieranie biblioteki…", 0f)

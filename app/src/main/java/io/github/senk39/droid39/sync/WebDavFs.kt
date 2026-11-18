@@ -117,6 +117,12 @@ class WebDavFs(
         call(req).use { r -> if (!r.isSuccessful) throw IOException("WebDAV MOVE ${r.code}") }
     }
 
+    override fun delete(path: String) {
+        call(Request.Builder().url(url(path)).delete().build()).use { r ->
+            if (!(r.isSuccessful || r.code == 404)) throw IOException("WebDAV DELETE ${r.code}")
+        }
+    }
+
     override fun dataSourceFactory(): DataSource.Factory = OkHttpDataSource.Factory(client)
 
     override fun uriFor(path: String): Uri = Uri.parse(url(path))

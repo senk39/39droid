@@ -30,8 +30,15 @@ i odsyła na PC to, co zmieniło się podczas słuchania.
   zajmie); potem można włączyć „Pobieraj automatycznie po synchronizacji”.
 * **Z sieci**: reszta biblioteki (np. 392 GB folderu Vocaloid) jest strumieniowana z NAS i trafia do pamięci
   podręcznej LRU na karcie (domyślnie 4 GB, do 64 GB).
-* **Istniejąca kopia na karcie SD** (np. `/storage/XXXX-XXXX/MUZYKA`) jest wykorzystywana bez zmian – aplikacja
-  dopasowuje pliki po ścieżce względnej i nie pobiera ich drugi raz. Nie musisz już kopiować całości ręcznie.
+* **Istniejąca kopia na karcie SD** (np. `/storage/XXXX-XXXX/Music`) jest wykorzystywana – aplikacja dopasowuje
+  pliki po ścieżce względnej i nie pobiera ich drugi raz. Nie musisz już kopiować całości ręcznie.
+* **Przejęty folder na karcie** (Ustawienia → Muzyka na karcie → Przejmij folder, wymaga „Dostępu do wszystkich
+  plików”): aplikacja utrzymuje kopię sama – pobrane utwory trafiają do niego w układzie folderów z PC, pliki
+  zmienione na PC (inny rozmiar, np. nowe tagi) są pobierane ponownie, przy braku miejsca znikają najrzadziej słuchane
+  (spoza reguł offline – są na NAS i PC), a pliki, których nie ma już w bibliotece PC (przemianowane, usunięte), są
+  usuwane dopiero po potwierdzeniu w „Porządkuj folder…” (lista plików, dwa kliknięcia).
+* **Miejsce na dane**: biblioteka z PC, okładki, pamięć podręczna strumieni i pobrane – domyślnie na **karcie SD**,
+  do zmiany na pamięć wewnętrzną (Ustawienia → Miejsce na dane). Dziennik zmian zostaje w pamięci telefonu.
 * **Bez sieci** grają utwory pobrane i z karty; pozostałe są wyszarzone (ikona chmury).
 
 Kolejność źródła przy odtwarzaniu: plik pobrany → kopia na karcie → NAS (przez pamięć podręczną).
@@ -58,6 +65,10 @@ Kolejność źródła przy odtwarzaniu: plik pobrany → kopia na karcie → NAS
   („odtwórz DECO*27 w 39droid” – wykonawca vocaP, wokalista, album albo wyszukiwanie utworów).
 * **Simple Scrobbler 1.7.0**: sesja multimediów z metadanymi jak w tagach (wykonawca „X feat. Y” – scrobble łączą się
   z historią z 39player) oraz opcjonalny broadcast SLS API.
+* **Kontynuuj z PC** (karta na ekranie głównym) i **Kontynuuj z telefonu** (pasek stanu 39player): kolejka, utwór
+  i pozycja przechodzą między urządzeniami, a urządzenie, które grało, dostaje polecenie pauzy.
+* **Na bieżąco z PC**: gdy aplikacja jest na ekranie albo gra, co 45 s sprawdza, czy na NAS jest nowa biblioteka
+  z PC (i wysyła swoje zmiany) – zmiany z 39player trafiają na telefon bez ręcznej synchronizacji.
 
 ## Instalacja na telefonie
 
@@ -82,7 +93,8 @@ Zanim NAS będzie gotowy, aplikacja działa z samą kopią biblioteki na karcie 
 2. Skopiuj plik na telefon (np. kablem do folderu Pobrane).
 3. W 39droid: **Wczytaj z pliku** na ekranie głównym (albo Ustawienia → Wczytaj bibliotekę z pliku…).
 4. Karta **Kopia biblioteki na karcie** proponuje folder z muzyką (np. `/storage/0123-4567/Music`) –
-   **Użyj i skanuj**, zezwól na odczyt muzyki. Utwory z karty grają od razu, bez sieci.
+   **Użyj i skanuj**, zezwól na odczyt muzyki. Utwory z karty grają od razu, bez sieci. Żeby aplikacja sama
+   utrzymywała ten folder: Ustawienia → Muzyka na karcie → **Przejmij folder**.
 
 Zmiany z telefonu (serduszka, odsłuchy, playlisty) czekają w aplikacji i trafią na PC przy pierwszej synchronizacji
 z NAS. Gdy NAS zacznie działać, migawka z NAS zastąpi wczytany plik.
@@ -107,8 +119,10 @@ z NAS. Gdy NAS zacznie działać, migawka z NAS zastąpi wczytany plik.
    (np. `dxp4800plus.tail1234.ts.net`) – aplikacja użyje pierwszego, który odpowiada. NAS nie musi być wystawiony
    do internetu.
 
-W aplikacji: **Ustawienia → NAS** (protokół, adresy, udział, foldery `MUZYKA` i `39sync`, użytkownik, hasło –
-szyfrowane kluczem z Android Keystore) → **Testuj połączenie** → **Synchronizuj teraz**.
+W aplikacji: **Ustawienia → NAS** (protokół, adresy, udział, foldery muzyki i synchronizacji, użytkownik, hasło –
+szyfrowane kluczem z Android Keystore) → **Testuj połączenie** → **Synchronizuj teraz**. Dla
+`\\192.168.1.20\personal_folder\Music` i `…\39sync`: SMB, adres `192.168.1.20`, udział `personal_folder`,
+folder biblioteki `Music`, folder synchronizacji `39sync`.
 
 > **Android 17:** aplikacje z targetSdk 37 potrzebują zgody na dostęp do sieci lokalnej (`ACCESS_LOCAL_NETWORK`,
 > grupa „Urządzenia w pobliżu”) – bez niej połączenia z NAS w LAN kończą się przekroczeniem czasu. 39droid prosi
@@ -176,8 +190,9 @@ app/src/main/java/io/github/senk39/droid39/
   App.kt                  obiekty aplikacji (biblioteka, NAS, pliki, synchronizacja, pamięć podręczna)
   core/                   ustawienia, szyfrowanie hasła, normalizacja tekstu (jak names.sort_key w 39player)
   data/                   migawka z PC (SnapshotDb), nakładka zmian (Library), lokalna baza (LocalDb), modele
-  sync/                   SMB (smbj) i WebDAV, połączenie z wyborem adresu, synchronizacja, offline, WorkManager
-  files/                  pobrane pliki i kopia biblioteki na karcie (MediaStore)
+  sync/                   SMB (smbj) i WebDAV, połączenie z wyborem adresu, synchronizacja, offline, WorkManager,
+                          LiveLink (na bieżąco z PC, Kontynuuj z PC, polecenie pauzy)
+  files/                  miejsce na dane (karta SD / pamięć wewnętrzna), pobrane, kopia na karcie i przejęty folder
   media/                  usługa odtwarzania (Media3), źródło danych lokalne/NAS, Simple Scrobbler, kontroler UI
   art/                    miniatury okładek (NAS, plik lokalny, pamięć)
   ui/                     Compose: biblioteka, kategorie z półkami i filtrami Love Live!, listy, odtwarzacz, ustawienia

@@ -23,6 +23,8 @@ interface RemoteFs : Closeable {
     /** Zapis całego pliku (nadpisuje, tworzy brakujące foldery). */
     fun write(path: String, data: ByteArray)
     fun rename(from: String, to: String)
+    /** Usuwa plik (brak pliku – bez błędu). */
+    fun delete(path: String)
 
     /** Źródło danych dla odtwarzacza (strumieniowanie plików muzyki). */
     fun dataSourceFactory(): DataSource.Factory

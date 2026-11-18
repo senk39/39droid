@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- odczyt istniejącej kopii biblioteki na karcie SD (MediaStore) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- przejęty folder muzyki na karcie (np. /storage/XXXX-XXXX/Music): zapis pobranych, usuwanie po potwierdzeniu -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Simple Scrobbler (Simple Last.fm Scrobbler): sprawdzenie, czy jest zainstalowany, i broadcast SLS API -->
     <queries>

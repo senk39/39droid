@@ -116,6 +116,14 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
 
     fun track(id: Int): TrackRow? = tracksByIds(listOf(id)).firstOrNull()
 
+    /** Utwór po ścieżce względnej (gdy ID z innego urządzenia jest nieaktualne). */
+    fun trackIdByRel(rel: String): Int? {
+        for (sql in arrayOf("SELECT id FROM track WHERE rel = ? LIMIT 1", "SELECT id FROM track WHERE rel = ? COLLATE NOCASE LIMIT 1")) {
+            db.rawQuery(sql, arrayOf(rel)).use { c -> if (c.moveToFirst()) return c.getInt(0) }
+        }
+        return null
+    }
+
     fun nodeTrackIds(nodeId: Int): List<Int> {
         val out = ArrayList<Int>()
         db.rawQuery("SELECT track_id FROM node_track WHERE node_id = ? ORDER BY pos", arrayOf(nodeId.toString())).use { c ->
@@ -195,6 +203,17 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
         val out = ArrayList<String>()
         db.rawQuery("SELECT rel FROM track WHERE art = ? LIMIT $limit", arrayOf(artKey)).use { c ->
             while (c.moveToNext()) out += c.getString(0)
+        }
+        return out
+    }
+
+    /** Odtworzenia wg ścieżki: (id, ścieżka, rozmiar, liczba odtworzeń, ostatnie odtworzenie) – np. do zwalniania miejsca. */
+    data class FileStat(val id: Int, val rel: String, val size: Long, val plays: Int, val lastPlayed: Double)
+
+    fun fileStats(): List<FileStat> {
+        val out = ArrayList<FileStat>()
+        db.rawQuery("SELECT id, rel, COALESCE(size,0), COALESCE(play_count,0), COALESCE(last_played,0) FROM track", null).use { c ->
+            while (c.moveToNext()) out += FileStat(c.getInt(0), c.getString(1), c.getLong(2), c.getInt(3), c.getDouble(4))
         }
         return out
     }

@@ -162,6 +162,23 @@ class PlayerConnection(private val context: Context) {
         }
     }
 
+    /**
+     * Kolejka z innego urządzenia („Kontynuuj z PC”): już w kolejności odtwarzania, więc bez tasowania; od utworu
+     * `start` i pozycji `positionMs`.
+     */
+    fun resume(rows: List<TrackRow>, start: Int, positionMs: Long, repeat: Int, label: String) {
+        if (rows.isEmpty()) return
+        val list = if (rows.size > MAX_QUEUE) rows.subList(0, MAX_QUEUE) else rows
+        source.value = label
+        withController { c ->
+            c.shuffleModeEnabled = false
+            c.repeatMode = repeat
+            c.setMediaItems(items(list), start.coerceIn(0, list.size - 1), positionMs.coerceAtLeast(0))
+            c.prepare()
+            c.play()
+        }
+    }
+
     fun playNext(rows: List<TrackRow>) = withController { c ->
         if (c.mediaItemCount == 0) {
             c.setMediaItems(items(rows)); c.prepare(); c.play()

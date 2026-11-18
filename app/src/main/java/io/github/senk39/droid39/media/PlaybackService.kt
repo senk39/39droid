@@ -9,12 +9,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
@@ -37,6 +39,7 @@ import io.github.senk39.droid39.App
 import io.github.senk39.droid39.MainActivity
 import io.github.senk39.droid39.R
 import io.github.senk39.droid39.data.TrackRow
+import io.github.senk39.droid39.sync.LiveLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -89,6 +92,13 @@ class PlaybackService : MediaLibraryService() {
             .setMediaButtonPreferences(listOf(heartButton(0)))
             .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider(this).apply { setSmallIcon(R.drawable.ic_stat_39) })
+        // odtwarzanie przejęte przez PC („Kontynuuj z telefonu” w 39player) – pauza tutaj
+        g.live.onPause = { who ->
+            if (player.playWhenReady) {
+                player.pause()
+                Toast.makeText(this, "Odtwarzanie przejął $who – telefon wstrzymany", Toast.LENGTH_LONG).show()
+            }
+        }
         scope.launch { restoreQueue() }
     }
 
@@ -103,6 +113,9 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         saveState()
+        publishState(forcePaused = true)
+        g.live.onPause = null
+        g.live.setPlaying(false)
         tracker.finish()
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
@@ -289,6 +302,7 @@ class PlaybackService : MediaLibraryService() {
             if (player.isPlaying) handler.postDelayed(this, 1000)
             val now = SystemClock.elapsedRealtime()
             if (now - lastSave > 15_000) saveState()
+            if (now - lastPublish > 30_000) publishState()
         }
     }
 
@@ -308,6 +322,7 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
             saveState()
+            publishSoon()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -315,9 +330,20 @@ class PlaybackService : MediaLibraryService() {
             scrobbler.playing(player.currentMediaItem, isPlaying)
             handler.removeCallbacks(tick)
             if (isPlaying) handler.postDelayed(tick, 1000) else saveState()
+            publishSoon()
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            updateLivePlaying()
+            publishSoon()
+        }
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = publishSoon()
+
+        override fun onRepeatModeChanged(repeatMode: Int) = publishSoon()
+
         override fun onPlaybackStateChanged(playbackState: Int) {
+            updateLivePlaying()
             if (playbackState == Player.STATE_ENDED) {
                 tracker.finish()
                 scrobbler.complete(player.currentMediaItem)
@@ -336,8 +362,55 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueueSoon()
+            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                saveQueueSoon()
+                publishSoon()
+            }
         }
+    }
+
+    // ---------------------------------------------------------------- stan dla PC („Kontynuuj z telefonu”)
+    private var lastPublish = 0L
+    private val publishRunnable = Runnable { publishState() }
+
+    private fun publishSoon() {
+        handler.removeCallbacks(publishRunnable)
+        handler.postDelayed(publishRunnable, 1500)
+    }
+
+    /** Telefon „gra” – zamiar użytkownika (bez chwilowych przerw na buforowanie i zmianę utworu). */
+    private fun updateLivePlaying() {
+        val st = player.playbackState
+        g.live.setPlaying(player.playWhenReady && st != Player.STATE_IDLE && st != Player.STATE_ENDED)
+    }
+
+    /** Kolejka w kolejności odtwarzania (także przy losowaniu), bieżący utwór i pozycja → state/now-<telefon>.json. */
+    private fun publishState(forcePaused: Boolean = false) {
+        if (!::player.isInitialized || !g.settings.nasConfigured) return
+        val tl = player.currentTimeline
+        if (tl.isEmpty) return
+        lastPublish = SystemClock.elapsedRealtime()
+        val shuffle = player.shuffleModeEnabled
+        val window = Timeline.Window()
+        val order = ArrayList<Int>(tl.windowCount)
+        var i = tl.getFirstWindowIndex(shuffle)
+        while (i != C.INDEX_UNSET && order.size < tl.windowCount) {
+            order += i
+            i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, shuffle)
+        }
+        var idx = order.indexOf(player.currentMediaItemIndex).coerceAtLeast(0)
+        var ids = order.map { tl.getWindow(it, window).mediaItem.mediaId.toIntOrNull() ?: -1 }
+        if (ids.size > LiveLink.MAX_QUEUE) {
+            val from = (idx - 500).coerceAtLeast(0)
+            ids = ids.subList(from, (from + LiveLink.MAX_QUEUE).coerceAtMost(ids.size))
+            idx -= from
+        }
+        idx -= ids.subList(0, idx).count { it < 0 }
+        ids = ids.filter { it >= 0 }
+        val st = player.playbackState
+        val playing = !forcePaused && player.playWhenReady && st != Player.STATE_IDLE && st != Player.STATE_ENDED
+        g.live.publish(LiveLink.PhoneQueue(ids, idx, player.currentMediaItem?.mediaId?.toIntOrNull(),
+            player.currentPosition, playing, shuffle, player.repeatMode))
     }
 
     private var queueJob: kotlinx.coroutines.Job? = null

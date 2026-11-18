@@ -25,7 +25,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.concurrent.TimeUnit
 
 /** Okresowa synchronizacja z NAS (gdy telefon jest w sieci). */
@@ -64,41 +63,47 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val g = App.graph
         if (!g.library.ready) return@withContext Result.success()
         runCatching { setForeground(foreground("Przygotowanie…", 0, 0)) }
+        g.files.cleanTemp()
         val plan = g.offline.plan()
-        for (f in plan.toRemove) {
-            val rel = f.relKey
-            File(f.path).delete()
-            g.local.removeFile(rel)
-        }
-        if (plan.toRemove.isNotEmpty()) g.files.load()
+        if (plan.toRemove.isNotEmpty()) g.files.deleteLocal(plan.toRemove)
         val todo = plan.toDownload
+        // przy zwalnianiu miejsca nie usuwamy tego, co ma być na telefonie ani tego, co właśnie pobieramy
+        val protect = HashSet<String>().apply {
+            plan.wanted.forEach { add(Text.relKey(it.rel)) }
+            todo.forEach { add(Text.relKey(it.rel)) }
+        }
         var done = 0
         var failed = 0
         var bytes = 0L
+        var freed = 0L
         val music = g.settings.musicPath
-        val vol = g.files.downloadVolume()
         for (t in todo) {
             if (isStopped) break
             if (g.settings.wifiOnlyDownloads && g.nas.metered()) break
-            if (vol.free - t.size < g.files.reserveBytes()) {
-                // nigdy nie zapełniamy pamięci – zostaje rezerwa na system i inne aplikacje
-                runCatching { setForeground(foreground("Brak miejsca na ${vol.label} – pobieranie wstrzymane", done, todo.size)) }
-                break
+            val vol = g.files.downloadVolume()
+            val replacing = g.files.find(t.rel)?.takeIf { g.files.isManaged(it) }?.size ?: 0L
+            val need = t.size - replacing + g.files.reserveBytes()
+            if (vol.free < need) {
+                // przejęty folder: miejsce po najrzadziej słuchanych (są na NAS); inaczej – rezerwa nietknięta
+                if (g.files.managedRoot() != null) freed += g.offline.evict(need - vol.free + 64L * 1024 * 1024, protect)
+                if (g.files.downloadVolume().free < need) {
+                    runCatching { setForeground(foreground("Brak miejsca na ${vol.label} – pobieranie wstrzymane", done, todo.size)) }
+                    break
+                }
             }
             val pct = "${done + 1}/${todo.size} · ${Text.size(bytes)} z ${Text.size(plan.downloadBytes)}"
             runCatching { setForeground(foreground("$pct · ${t.title}", done, todo.size)) }
             setProgress(workDataOf("done" to done, "total" to todo.size, "title" to t.title))
             val target = g.files.downloadTarget(t.rel)
-            val part = File(target.path + ".part")
+            val part = g.files.tempFor(target)
             try {
-                target.parentFile?.mkdirs()
+                part.parentFile?.mkdirs()
                 g.nas.use { fs ->
                     fs.openStream(RemoteFs.join(music, t.rel)).use { input ->
                         part.outputStream().use { out -> input.copyTo(out, 256 * 1024) }
                     }
                 }
-                if (target.exists()) target.delete()
-                if (!part.renameTo(target)) throw IllegalStateException("Nie można zapisać ${target.name}")
+                g.files.moveInto(part, target)
                 g.files.registerDownload(t.rel, target)
                 bytes += target.length()
                 runCatching { g.art.prefetch(t.artKey, t.rel) }
@@ -109,6 +114,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             }
             done++
         }
+        if (freed > 0) g.files.load()
         g.files.recomputeAvailable(g.library)
         if (failed > 0 && done < todo.size) Result.retry() else Result.success()
     }

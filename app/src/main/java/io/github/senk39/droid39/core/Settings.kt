@@ -79,10 +79,23 @@ class Settings(context: Context) {
     val nasConfigured: Boolean get() = hosts.isNotBlank() && share.isNotBlank()
 
     // ---------------------------------------------------------------- pliki lokalne
-    /** Foldery z kopią biblioteki na telefonie/karcie (tylko odczyt), np. „/storage/1234-ABCD/MUZYKA”. */
+    /** Foldery z kopią biblioteki na telefonie/karcie, np. „/storage/1234-ABCD/Music”. */
     var mirrorFolders by str("mirror_folders", "")
-    /** Wolumin na pobrane utwory: „auto” (karta SD, jeśli jest), „primary” albo UUID woluminu. */
-    var downloadVolume by str("download_volume", "auto")
+    /**
+     * Miejsce na dane aplikacji: biblioteka z PC, okładki, pamięć podręczna strumieni i pobrane utwory –
+     * „sd” (karta pamięci; bez karty – pamięć wewnętrzna) albo „internal”.
+     */
+    var storage by str("storage", "sd")
+    /** Folder danych używany ostatnio – po zmianie miejsca dane są przenoszone, a stare pamięci podręczne usuwane. */
+    var dataDirUsed by str("data_dir_used", "")
+    /**
+     * Przejęty folder muzyki na karcie (np. „/storage/0123-4567/Music” – kopia F:\MUZYKA): pobrane utwory trafiają
+     * tam w układzie folderów z PC, nieaktualne pliki są usuwane po potwierdzeniu. Wymaga „Dostępu do wszystkich
+     * plików”. Pusty – pobrane trafiają do folderu aplikacji.
+     */
+    var managedFolder by str("managed_folder", "")
+    /** Przejęty folder: gdy brakuje miejsca na pobierane, usuwaj najrzadziej słuchane (spoza reguł offline). */
+    var evictRarelyPlayed by bool("evict_rarely_played", true)
     var cacheSizeMb by int("cache_size_mb", 4096)
 
     // ---------------------------------------------------------------- offline

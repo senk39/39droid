@@ -40,9 +40,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
+import io.github.senk39.droid39.sync.DeviceState
 import io.github.senk39.droid39.sync.NasState
 import io.github.senk39.droid39.ui.Icons39
 import io.github.senk39.droid39.ui.Nav
@@ -132,6 +134,7 @@ fun HomeScreen() {
         })
         LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
             item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount) }
+            item { ContinueFromPcCard() }
             if (!ready) {
                 item {
                     EmptyState(
@@ -197,6 +200,59 @@ fun HomeScreen() {
             item { IconTextRow(Icons39.CheckCircle, "Ostatnio zatwierdzone", "Historia z listy Nie przesłuchane", C39.Green) { Nav.go(Route.Commits) } }
             item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } }
         }
+    }
+}
+
+/** „Kontynuuj z PC”: kolejka, utwór i pozycja z 39player (state/now-pc.json na NAS); PC dostaje polecenie pauzy. */
+@Composable
+private fun ContinueFromPcCard() {
+    val g = App.graph
+    val pc by g.live.pc.collectAsState()
+    val now by g.player.now.collectAsState()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val st: DeviceState = pc ?: return
+    val fresh = st.hasTrack && System.currentTimeMillis() - st.tsMs < 7L * 24 * 3600_000
+    // telefon gra już ten utwór (np. zaraz po przejęciu) – karta zbędna
+    if (!fresh || (now.playing && now.id != null && now.id == st.trackId)) return
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
+            .background(C39.Surface).padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons39.Computer, null, Modifier.size(20.dp), tint = LocalAccent.current)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(listOf(st.artist, st.title).filter { it.isNotBlank() }.joinToString(" – "), fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "PC: " + (if (st.playing) "gra" else "wstrzymany") + " · " + ago(st.tsMs) + " · " +
+                        T.durationMs(st.positionMs) + " · w kolejce ${st.queue.size}",
+                    color = C39.Text2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        HomeButton(if (busy) "Wczytywanie…" else "Kontynuuj z PC", filled = true) {
+            if (busy) return@HomeButton
+            busy = true
+            scope.launch {
+                val msg = g.live.continueFromPc(g.player)
+                busy = false
+                android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+private fun ago(tsMs: Long): String {
+    val s = ((System.currentTimeMillis() - tsMs) / 1000).coerceAtLeast(0)
+    return when {
+        s < 60 -> "przed chwilą"
+        s < 3600 -> "${s / 60} min temu"
+        s < 86400 -> "${s / 3600} godz. temu"
+        else -> "${s / 86400} dni temu"
     }
 }
 

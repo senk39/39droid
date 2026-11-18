@@ -66,6 +66,16 @@ class MainActivity : ComponentActivity() {
         setContent { Root() }
     }
 
+    override fun onStart() {
+        super.onStart()
+        App.graph.live.setForeground(true)                       // zmiany z PC i „Kontynuuj z PC” na bieżąco
+    }
+
+    override fun onStop() {
+        App.graph.live.setForeground(false)
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
