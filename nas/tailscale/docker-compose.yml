@@ -8,28 +8,28 @@
 #
 # Pierwsze uruchomienie: w logach kontenera pojawi się link „To authenticate, visit: https://login.tailscale.com/…”
 # – otwórz go i zaloguj się na swoje konto Tailscale (wcześniej ustaw politykę z tailnet-policy.hujson).
-configs:
-  serve:
-    content: |
-      {"TCP": {"445": {"TCPForward": "127.0.0.1:445"}}}
-
+#
+# Ostrzeżenia w logu, które są w porządku: „failed to symlink socket … read-only file system” (gniazdo jest w /tmp)
+# i „failed to force-set UDP read/write buffer size” (bez uprawnień – nieco mniejsza przepustowość, dla muzyki bez
+# znaczenia).
 services:
   tailscale:
     image: tailscale/tailscale:v1.104.7
     container_name: tailscale-39
     network_mode: host                      # 127.0.0.1:445 = Samba NAS-a; Tailscale działa w userspace, bez TUN
+    # Konfiguracja „serve” (tylko przekazywanie TCP 445 → Samba) zapisywana przy starcie w /tmp (tmpfs) –
+    # system plików kontenera jest tylko do odczytu, a containerboot obserwuje folder z tym plikiem.
+    entrypoint: ["/bin/sh", "-c", "printf '%s' \"$$SERVE_JSON\" > /tmp/serve.json && exec /usr/local/bin/containerboot"]
     environment:
+      SERVE_JSON: '{"TCP":{"445":{"TCPForward":"127.0.0.1:445"}}}'
+      TS_SERVE_CONFIG: /tmp/serve.json
       TS_HOSTNAME: nas-39
       TS_USERSPACE: "true"
       TS_STATE_DIR: /var/lib/tailscale
       TS_SOCKET: /tmp/tailscaled.sock
       TS_AUTH_ONCE: "true"                  # loguje się tylko raz, potem używa zapisanego stanu
       TS_ACCEPT_DNS: "false"
-      TS_SERVE_CONFIG: /config/serve.json   # tylko przekazywanie TCP 445 → Samba
       TS_EXTRA_ARGS: --advertise-tags=tag:nas
-    configs:
-      - source: serve
-        target: /config/serve.json
     volumes:
       - tailscale-state:/var/lib/tailscale
     tmpfs:
