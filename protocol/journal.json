@@ -1,0 +1,77 @@
+{
+ "format": 1,
+ "device": "0123456789abcdef",
+ "device_name": "Galaxy A55",
+ "app": "39droid 0.1.0",
+ "created": 1795000100.25,
+ "first_seq": 41,
+ "last_seq": 47,
+ "events": [
+  {
+   "seq": 41,
+   "ts": 1795000000.5,
+   "type": "heart",
+   "track": 1001,
+   "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+   "level": 2
+  },
+  {
+   "seq": 42,
+   "ts": 1795000010.5,
+   "type": "mark",
+   "track": 1002,
+   "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/02 - Łódź.mp3",
+   "best": 0,
+   "liked": 1,
+   "listened": 1
+  },
+  {
+   "seq": 43,
+   "ts": 1795000020.5,
+   "type": "play",
+   "track": 1001,
+   "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+   "played_ms": 183000,
+   "counted": true
+  },
+  {
+   "seq": 44,
+   "ts": 1795000030.5,
+   "type": "play",
+   "track": 1003,
+   "rel": "Anime/Love Live!/[2021.07.21] Single/01 - Start!! True dreams.flac",
+   "played_ms": 5000,
+   "counted": false
+  },
+  {
+   "seq": 45,
+   "ts": 1795000040.5,
+   "type": "pl_create",
+   "playlist": "Z telefonu/Na drogę.m3u8"
+  },
+  {
+   "seq": 46,
+   "ts": 1795000050.5,
+   "type": "pl_add",
+   "playlist": "Z telefonu/Na drogę.m3u8",
+   "tracks": [
+    1001
+   ],
+   "rels": [
+    "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3"
+   ]
+  },
+  {
+   "seq": 47,
+   "ts": 1795000060.5,
+   "type": "pl_remove",
+   "playlist": "Ulubione.m3u8",
+   "tracks": [
+    1002
+   ],
+   "rels": [
+    "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/02 - Łódź.mp3"
+   ]
+  }
+ ]
+}

@@ -204,6 +204,10 @@ zgłasza błąd, albo PC nie odzywa się od ponad 3 dni. Szczegóły: dotknięci
 
 Testy: `cd pc && python -m unittest discover -s tests -v` (działają na kopii danych 39player).
 
+Formaty plików wymienianych przez NAS mają wzorce w `protocol/` (opis: `protocol/README.md`) – sprawdzają je testy
+Python (`pc/tests/test_protocol.py`, kod 39player i sync39) i Kotlin (`ProtocolTest`, `./gradlew testDebugUnitTest`),
+więc niezgodność formatu między telefonem a PC wychodzi w testach, zanim trafi na urządzenia.
+
 ## Simple Scrobbler
 
 Simple Scrobbler 1.7.0 śledzi sesje multimediów (dostęp do powiadomień) – tak samo jak przy PowerAmp. Przy pierwszym

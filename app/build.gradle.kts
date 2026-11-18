@@ -62,6 +62,11 @@ android {
     }
 }
 
+// wzorcowe pliki formatów (protocol/) – zmiana któregoś musi uruchomić testy jednostkowe ponownie
+tasks.withType<Test>().configureEach {
+    inputs.dir(rootProject.file("protocol")).withPropertyName("protocol").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
@@ -93,4 +98,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.87")
 
     testImplementation("junit:junit:4.13.2")
+    // wspólne testy formatów z PC (protocol/): prawdziwe org.json (android.jar ma tylko atrapy) i SQLite na JVM
+    testImplementation("org.json:json:20240303")
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
 }

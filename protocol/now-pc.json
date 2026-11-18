@@ -1,0 +1,26 @@
+{
+ "format": 1,
+ "device": "pc",
+ "name": "PC",
+ "kind": "pc",
+ "app": "39player 2.0.86",
+ "ts": 1795000250.5,
+ "playing": false,
+ "position_ms": 42000,
+ "index": 0,
+ "queue": [
+  1001,
+  1002,
+  1003
+ ],
+ "track": {
+  "id": 1001,
+  "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+  "title": "ゴーストルール",
+  "artist": "DECO*27 feat. 初音ミク",
+  "duration": 215.5
+ },
+ "shuffle": false,
+ "repeat": "one",
+ "label": ""
+}

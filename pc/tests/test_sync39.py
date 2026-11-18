@@ -20,24 +20,18 @@ sys.path.insert(0, HERE)
 
 PLAYER_DIR = os.environ.get("SYNC39_PLAYER39_DIR", r"D:\Claude Projects\39player")
 
-# Kopia zapytań, którymi 39droid nakłada plik stanu na pełną bibliotekę (SyncManager.APPLY_STATE) – test sprawdza, że
-# wynik jest taki sam jak nowa pełna biblioteka.
-PHONE_APPLY_STATE = [
-    "UPDATE track SET heart = 0, play_count = 0, last_played = NULL",
-    "UPDATE track SET heart = (SELECT s.heart FROM st.track_state s WHERE s.id = track.id), "
-    "play_count = (SELECT s.play_count FROM st.track_state s WHERE s.id = track.id), "
-    "last_played = (SELECT s.last_played FROM st.track_state s WHERE s.id = track.id) "
-    "WHERE id IN (SELECT id FROM st.track_state)",
-    "UPDATE node SET likes = 0",
-    "UPDATE node SET likes = (SELECT s.likes FROM st.node_likes s WHERE s.id = node.id) "
-    "WHERE id IN (SELECT id FROM st.node_likes)",
-    "UPDATE tag SET likes = 0",
-    "UPDATE tag SET likes = (SELECT s.likes FROM st.tag_likes s WHERE s.id = tag.id) "
-    "WHERE id IN (SELECT id FROM st.tag_likes)",
-] + [q for t in ("playlist", "playlist_track", "unlistened", "commit_log", "star", "applied")
-     for q in (f"DELETE FROM {t}", f"INSERT INTO {t} SELECT * FROM st.{t}")] + [
-    "UPDATE info SET value = (SELECT value FROM st.info WHERE key = 'created') WHERE key = 'created'",
-]
+# Zapytania, którymi 39droid nakłada plik stanu na pełną bibliotekę – wspólny plik protocol/apply-state.sql (ten sam
+# tekst ma Protocol.APPLY_STATE w 39droid; zgodność sprawdza ProtocolTest). Test sprawdza, że wynik jest taki sam jak
+# nowa pełna biblioteka.
+PROTOCOL_DIR = os.path.join(os.path.dirname(HERE), "protocol")
+
+
+def apply_state_sql() -> list[str]:
+    with open(os.path.join(PROTOCOL_DIR, "apply-state.sql"), encoding="utf-8") as f:
+        return [ln.strip().rstrip(";") for ln in f if ln.strip() and not ln.startswith("--")]
+
+
+PHONE_APPLY_STATE = apply_state_sql()
 
 
 @unittest.skipUnless(os.path.isdir(os.path.join(PLAYER_DIR, "player39")), "brak 39player")

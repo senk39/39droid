@@ -251,8 +251,8 @@ class LiveLink(
         player.resume(rows, idx, st.resumePosition(), repeat, "Kolejka z PC")
         if (st.playing) {
             runCatching {
-                writeJson("cmd-pc.json", JSONObject().put("cmd", "pause").put("from", settings.deviceId)
-                    .put("name", settings.deviceName).put("ts", System.currentTimeMillis() / 1000.0))
+                writeJson("cmd-pc.json", Protocol.pauseCommand(settings.deviceId, settings.deviceName,
+                    System.currentTimeMillis() / 1000.0))
             }
         }
         "Kontynuacja z PC: ${rows[idx].title} od ${Text.durationMs(st.resumePosition())}"
@@ -267,11 +267,11 @@ class LiveLink(
             return
         }
         runCatching { nas.use { it.delete(path) } }
-        val o = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull() ?: return
-        val ts = (o.optDouble("ts", 0.0) * 1000).toLong()
+        val c = Protocol.parseCommand(String(bytes, Charsets.UTF_8)) ?: return
+        val ts = c.tsMs
         val fresh = System.currentTimeMillis() - ts < CMD_MAX_AGE_MS && ts > playStartedAt
-        if (o.optString("cmd") == "pause" && fresh && playing) {
-            val who = if (o.optString("from") == "pc") "PC" else o.optString("name", "inne urządzenie")
+        if (c.cmd == "pause" && fresh && playing) {
+            val who = if (c.from == "pc") "PC" else c.name.ifEmpty { "inne urządzenie" }
             main.post { onPause?.invoke(who) }
         }
     }
@@ -292,30 +292,16 @@ class LiveLink(
     }
 
     private fun stateJson(q: PhoneQueue): JSONObject {
-        val row = q.currentId?.let { library.track(it) }
-        val track = row?.let {
-            JSONObject().put("id", it.id).put("rel", it.rel).put("title", it.title).put("artist", it.artist)
-                .put("duration", it.duration)
+        val track = q.currentId?.let { library.track(it) }?.let {
+            Protocol.TrackInfo(it.id, it.rel, it.title, it.artist, it.duration)
         }
-        return JSONObject()
-            .put("format", 1)
-            .put("device", settings.deviceId)
-            .put("name", settings.deviceName)
-            .put("kind", "phone")
-            .put("app", "39droid ${BuildConfig.VERSION_NAME}")
-            .put("ts", System.currentTimeMillis() / 1000.0)
-            .put("playing", q.playing)
-            .put("position_ms", q.positionMs.coerceAtLeast(0))
-            .put("index", q.index)
-            .put("queue", JSONArray(q.ids))
-            .put("track", track ?: JSONObject.NULL)
-            .put("shuffle", q.shuffle)
-            .put("repeat", when (q.repeatMode) {
-                Player.REPEAT_MODE_ONE -> "one"
-                Player.REPEAT_MODE_ALL -> "all"
-                else -> "off"
-            })
-            .put("label", "")
+        val repeat = when (q.repeatMode) {
+            Player.REPEAT_MODE_ONE -> "one"
+            Player.REPEAT_MODE_ALL -> "all"
+            else -> "off"
+        }
+        return Protocol.phoneState(settings.deviceId, settings.deviceName, "39droid ${BuildConfig.VERSION_NAME}",
+            System.currentTimeMillis() / 1000.0, q.playing, q.positionMs, q.index, q.ids, track, q.shuffle, repeat)
     }
 
     private fun writeJson(name: String, obj: JSONObject) {

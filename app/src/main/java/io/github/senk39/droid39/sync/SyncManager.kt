@@ -69,23 +69,6 @@ class SyncManager(
         /** Zmian w jednym pliku dziennika. */
         const val CHUNK = 500
         const val KV_REJECTED = "rejected_json"
-
-        /** Nałożenie pliku stanu (dołączonego jako „st”) na pełną bibliotekę – kopia w teście sync39. */
-        val APPLY_STATE: List<String> = listOf(
-            "UPDATE track SET heart = 0, play_count = 0, last_played = NULL",
-            "UPDATE track SET heart = (SELECT s.heart FROM st.track_state s WHERE s.id = track.id), " +
-                "play_count = (SELECT s.play_count FROM st.track_state s WHERE s.id = track.id), " +
-                "last_played = (SELECT s.last_played FROM st.track_state s WHERE s.id = track.id) " +
-                "WHERE id IN (SELECT id FROM st.track_state)",
-            "UPDATE node SET likes = 0",
-            "UPDATE node SET likes = (SELECT s.likes FROM st.node_likes s WHERE s.id = node.id) " +
-                "WHERE id IN (SELECT id FROM st.node_likes)",
-            "UPDATE tag SET likes = 0",
-            "UPDATE tag SET likes = (SELECT s.likes FROM st.tag_likes s WHERE s.id = tag.id) " +
-                "WHERE id IN (SELECT id FROM st.tag_likes)",
-        ) + listOf("playlist", "playlist_track", "unlistened", "commit_log", "star", "applied").flatMap { t ->
-            listOf("DELETE FROM $t", "INSERT INTO $t SELECT * FROM st.$t")
-        } + "UPDATE info SET value = (SELECT value FROM st.info WHERE key = 'created') WHERE key = 'created'"
     }
 
     /** Pełna synchronizacja. Zwraca opis wyniku. */
@@ -170,15 +153,15 @@ class SyncManager(
     suspend fun quickSync(allowFull: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         if (mutex.isLocked || !settings.nasConfigured) return@withContext false
         val manifest = try {
-            JSONObject(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
+            Protocol.Manifest.parse(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
         } catch (e: FileNotFoundException) {
             return@withContext false
         }
-        val sha = manifest.optString("sha256")
+        val sha = manifest.sha256
         val newSnapshot = sha.isNotEmpty() && sha != settings.snapshotSha
-        val stateSha = manifest.optString("state_sha256")
+        val stateSha = manifest.stateSha256
         val newState = !newSnapshot && stateSha.isNotEmpty() && stateSha != settings.stateSha &&
-            manifest.optString("state_base") == settings.snapshotSha
+            manifest.stateBase == settings.snapshotSha
         val unsent = library.local.maxSeq() > settings.uploadedSeq
         // w sieci komórkowej pełna biblioteka czeka na Wi-Fi – bez ponawiania co kilkadziesiąt sekund
         if (!(newSnapshot && allowFull) && !newState && !unsent) return@withContext false
@@ -231,7 +214,8 @@ class SyncManager(
         val parts = ops.chunked(CHUNK)
         val dir = RemoteFs.join(syncDir(), "inbox", settings.deviceId)
         for ((i, part) in parts.withIndex()) {
-            val json = journal(part).toByteArray(Charsets.UTF_8)
+            val json = Protocol.journal(part, settings.deviceId, settings.deviceName, "39droid ${BuildConfig.VERSION_NAME}",
+                System.currentTimeMillis() / 1000.0).toString(1).toByteArray(Charsets.UTF_8)
             val partInfo = if (parts.size > 1) " · część ${i + 1}/${parts.size}" else ""
             _status.value = SyncStatus(true, "Wysyłanie zmian do PC: ${describe(ops)} · ${kb(json.size)}$partInfo…",
                 if (parts.size > 1) i.toFloat() / parts.size else null)
@@ -256,48 +240,6 @@ class SyncManager(
     private fun kb(bytes: Int): String =
         if (bytes < 1024 * 1024) String.format(Locale.ROOT, "%.1f kB", bytes / 1024.0)
         else String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0)
-
-    private fun journal(ops: List<LocalDb.Op>): String {
-        val events = JSONArray()
-        for (op in ops) {
-            val e = JSONObject()
-            e.put("seq", op.seq)
-            e.put("ts", op.ts / 1000.0)
-            e.put("type", op.type)
-            when (op.type) {
-                "heart" -> {
-                    e.put("track", op.trackId); e.put("rel", op.rel); e.put("level", op.value)
-                }
-                "mark" -> {
-                    e.put("track", op.trackId); e.put("rel", op.rel)
-                    e.put("best", if (op.value and 1 != 0) 1 else 0)
-                    e.put("liked", if (op.value and 2 != 0) 1 else 0)
-                    e.put("listened", if (op.value and 4 != 0) 1 else 0)
-                }
-                "play" -> {
-                    e.put("track", op.trackId); e.put("rel", op.rel); e.put("played_ms", op.value)
-                    e.put("counted", op.extra == "1")
-                }
-                "pl_add", "pl_remove" -> {
-                    e.put("playlist", op.playlist)
-                    e.put("tracks", JSONArray().put(op.trackId))
-                    e.put("rels", JSONArray().put(op.rel))
-                }
-                "pl_create" -> e.put("playlist", op.playlist)
-            }
-            events.put(e)
-        }
-        return JSONObject()
-            .put("format", 1)
-            .put("device", settings.deviceId)
-            .put("device_name", settings.deviceName)
-            .put("app", "39droid ${BuildConfig.VERSION_NAME}")
-            .put("created", System.currentTimeMillis() / 1000.0)
-            .put("first_seq", ops.first().seq)
-            .put("last_seq", ops.last().seq)
-            .put("events", events)
-            .toString(1)
-    }
 
     // ---------------------------------------------------------------- zmiany nieprzyjęte przez PC
     /** Odczyt state/rejected-<urządzenie>.json. Zwraca, ile odrzuconych zmian jest nowych od poprzedniego odczytu. */
@@ -337,25 +279,25 @@ class SyncManager(
      */
     private fun pullLocked(allowFull: Boolean = true): Boolean {
         val manifest = try {
-            JSONObject(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
+            Protocol.Manifest.parse(String(nas.use { it.read(RemoteFs.join(syncDir(), "manifest.json")) }, Charsets.UTF_8))
         } catch (e: FileNotFoundException) {
             throw IllegalStateException("Na NAS nie ma jeszcze migawki – uruchom na PC: python -m sync39 export")
         }
-        val format = manifest.optInt("format", 0)
+        val format = manifest.format
         if (format != 1) throw IllegalStateException("Migawka w formacie $format – zaktualizuj aplikację")
-        val sha = manifest.optString("sha256")
-        val stateRel = manifest.optString("state")
-        val stateSha = manifest.optString("state_sha256")
-        val stateBase = manifest.optString("state_base")
+        val sha = manifest.sha256
+        val stateRel = manifest.state
+        val stateSha = manifest.stateSha256
+        val stateBase = manifest.stateBase
         deferredFullBytes = 0
         if (!(sha.isNotEmpty() && sha == settings.snapshotSha && library.ready)) {
             if (!allowFull) {
-                deferredFullBytes = manifest.optLong("size", 1)
+                deferredFullBytes = manifest.size.coerceAtLeast(1)
                 return false
             }
             val dir = library.snapshotDir()
             val fresh = File(dir, "incoming.db")
-            val got = downloadGz(manifest.getString("snapshot"), manifest.optLong("size", 0), "Pobieranie biblioteki…", fresh)
+            val got = downloadGz(manifest.snapshot, manifest.size, "Pobieranie biblioteki…", fresh)
             if (sha.isNotEmpty() && got != sha) {
                 fresh.delete()
                 throw IllegalStateException("Uszkodzona migawka (suma kontrolna) – spróbuj ponownie")
@@ -365,16 +307,16 @@ class SyncManager(
             settings.snapshotSha = sha
             // pełna biblioteka zawiera stan z chwili eksportu – plik stanu z tego samego eksportu nie jest potrzebny
             settings.stateSha = if (stateBase == sha) stateSha else ""
-            settings.snapshotCreated = (manifest.optDouble("created", 0.0) * 1000).toLong()
+            settings.snapshotCreated = (manifest.createdSec * 1000).toLong()
             files.recomputeAvailable(library)
             return true
         }
         if (stateRel.isEmpty() || stateSha.isEmpty() || stateSha == settings.stateSha || stateBase != settings.snapshotSha) {
             return false
         }
-        applyState(stateRel, stateSha, manifest.optLong("state_size", 0))
+        applyState(stateRel, stateSha, manifest.stateSize)
         settings.stateSha = stateSha
-        settings.snapshotCreated = (manifest.optDouble("state_created", 0.0) * 1000).toLong()
+        settings.snapshotCreated = (manifest.stateCreatedSec * 1000).toLong()
         return true
     }
 
@@ -403,7 +345,7 @@ class SyncManager(
                 if (stateFormat != 1) throw IllegalStateException("Plik zmian z PC w formacie $stateFormat – zaktualizuj aplikację")
                 db.beginTransaction()
                 try {
-                    for (q in APPLY_STATE) db.execSQL(q)
+                    for (q in Protocol.APPLY_STATE) db.execSQL(q)
                     db.setTransactionSuccessful()
                 } finally {
                     db.endTransaction()

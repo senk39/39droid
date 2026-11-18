@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "generator": "sync39 0.1.0",
+ "ts": 1795000500.5,
+ "started": 1794990000.0,
+ "state": "waiting_confirmation",
+ "message": "Lustro: 20 plików do usunięcia z NAS czeka na potwierdzenie",
+ "reason": "na PC jest nagle 40 plików zamiast 60 – odłączony dysk?",
+ "pending_deletions": 20,
+ "last_mirror": 1795000400.0,
+ "last_export": 1795000300.0,
+ "export_pending_since": 0,
+ "mirror": true
+}

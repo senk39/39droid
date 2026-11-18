@@ -1,0 +1,26 @@
+{
+ "format": 1,
+ "device": "0123456789abcdef",
+ "name": "Galaxy A55",
+ "kind": "phone",
+ "app": "39droid 0.1.0",
+ "ts": 1795000200.75,
+ "playing": true,
+ "position_ms": 61000,
+ "index": 1,
+ "queue": [
+  1003,
+  1001,
+  1002
+ ],
+ "track": {
+  "id": 1001,
+  "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+  "title": "ゴーストルール",
+  "artist": "DECO*27 feat. 初音ミク",
+  "duration": 215.5
+ },
+ "shuffle": true,
+ "repeat": "all",
+ "label": ""
+}

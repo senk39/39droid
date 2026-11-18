@@ -1,0 +1,26 @@
+{
+ "format": 1,
+ "device": "0123456789abcdef",
+ "items": [
+  {
+   "seq": 41,
+   "ts": 1795000000.5,
+   "type": "heart",
+   "reason": "Na PC zmieniono serduszko później (18.11 19:05) – zostaje ♥",
+   "at": 1795000400.0,
+   "track": 1001,
+   "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+   "level": 2
+  },
+  {
+   "seq": 46,
+   "ts": 1795000050.5,
+   "type": "pl_add",
+   "reason": "Playlisty nie ma już na PC (usunięta albo przemianowana)",
+   "at": 1795000400.0,
+   "track": 1001,
+   "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
+   "playlist": "Z telefonu/Na drogę.m3u8"
+  }
+ ]
+}
