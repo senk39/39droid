@@ -52,6 +52,7 @@ import io.github.senk39.droid39.ui.components.ListCtx
 import io.github.senk39.droid39.ui.components.Loading
 import io.github.senk39.droid39.ui.components.NodeRowView
 import io.github.senk39.droid39.ui.components.Pill
+import io.github.senk39.droid39.ui.components.ReorderList
 import io.github.senk39.droid39.ui.components.SectionTitle
 import io.github.senk39.droid39.ui.components.SmallIconButton
 import io.github.senk39.droid39.ui.components.TrackListScreen
@@ -188,15 +189,80 @@ fun PlaylistScreen(rel: String, title: String) {
     val snapV by lib.snapVersion.collectAsState()
     val overlay by lib.overlayVersion.collectAsState()
     val rows = rememberLoad(rel, snapV, overlay) { lib.playlistTracks(rel) }
+    val editable = rememberLoad(rel, snapV, overlay) { lib.playlistEditable(rel) } ?: false
     val pinned = g.offline.isPlaylistPinned(rel)
+    var reorder by rememberSaveable(rel) { mutableStateOf(false) }
+    var rename by remember { mutableStateOf(false) }
+    var delete by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
+        if (reorder) {
+            TopBar("Kolejność: $title", extra = {
+                SmallIconButton(Icons39.Check, "Gotowe", tint = LocalAccent.current) { reorder = false }
+            })
+            Text("Przeciągnij za uchwyt albo użyj strzałek. Zmiany trafią do 39player przy synchronizacji.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = C39.Text3, fontSize = 12.sp)
+            if (rows == null) Loading()
+            else ReorderList(rows) { row, before -> g.scope.launch(Dispatchers.IO) { lib.movePlaylistTrack(rel, row, before) } }
+            return@Column
+        }
         TopBar(title)
         TrackListScreen(
             rows, ListCtx(title, playlistRel = rel), title,
-            actions = listOf(
-                (if (pinned) "Nie trzymaj offline" else "Zawsze na telefonie (offline)") to { g.offline.togglePlaylist(rel) },
-                "Dodaj wszystkie do kolejki" to { rows?.let { g.player.enqueue(it) } },
-            ),
+            actions = buildList {
+                add((if (pinned) "Nie trzymaj offline" else "Zawsze na telefonie (offline)") to { g.offline.togglePlaylist(rel) })
+                add("Dodaj wszystkie do kolejki" to { rows?.let { g.player.enqueue(it) } })
+                if (editable) {
+                    add("Zmień kolejność utworów" to { reorder = true })
+                    add("Zmień nazwę playlisty…" to { rename = true })
+                    add("Usuń playlistę…" to { delete = true })
+                }
+            },
+        )
+    }
+    if (rename) {
+        var name by remember { mutableStateOf(title) }
+        var err by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { rename = false },
+            title = { Text("Zmień nazwę playlisty") },
+            text = {
+                Column {
+                    OutlinedTextField(name, { name = it; err = null }, label = { Text("Nazwa") }, singleLine = true)
+                    if (err != null) Text(err!!, color = C39.Warn, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val res = runCatching { lib.renamePlaylist(rel, name) }
+                    res.onSuccess { newRel ->
+                        g.offline.playlistRenamed(rel, newRel)
+                        rename = false
+                        // ten sam ekran pod nową ścieżką (stos nawigacji bez starej nazwy)
+                        val i = Nav.stack.lastIndex
+                        if (i >= 0) Nav.stack[i] = Route.Playlist(newRel, newRel.substringAfterLast('/').substringBeforeLast('.'))
+                    }.onFailure { err = it.message }
+                }) { Text("Zmień") }
+            },
+            dismissButton = { TextButton(onClick = { rename = false }) { Text("Anuluj") } },
+        )
+    }
+    if (delete) {
+        AlertDialog(
+            onDismissRequest = { delete = false },
+            title = { Text("Usunąć playlistę „$title”?") },
+            text = {
+                Text("Na PC plik playlisty trafi do Kosza przy następnej synchronizacji (da się go przywrócić). " +
+                    "Utwory zostają w bibliotece.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    lib.deletePlaylist(rel)
+                    g.offline.playlistRenamed(rel, null)
+                    delete = false
+                    Nav.back()
+                }) { Text("Usuń", color = C39.Warn) }
+            },
+            dismissButton = { TextButton(onClick = { delete = false }) { Text("Anuluj") } },
         )
     }
 }

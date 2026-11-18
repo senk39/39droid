@@ -40,7 +40,17 @@ object Protocol {
                     e.put("tracks", JSONArray().put(op.trackId))
                     e.put("rels", JSONArray().put(op.rel))
                 }
-                "pl_create" -> e.put("playlist", op.playlist)
+                "pl_create", "pl_delete" -> e.put("playlist", op.playlist)
+                "pl_rename" -> {
+                    e.put("playlist", op.playlist); e.put("new_playlist", op.extra)
+                }
+                "pl_move" -> {
+                    e.put("playlist", op.playlist)
+                    e.put("tracks", JSONArray().put(op.trackId))
+                    e.put("rels", JSONArray().put(op.rel))
+                    e.put("before", if (op.value > 0) op.value else JSONObject.NULL)
+                    e.put("before_rel", op.extra ?: JSONObject.NULL)
+                }
             }
             events.put(e)
         }

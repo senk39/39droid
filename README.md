@@ -204,6 +204,12 @@ zgłasza błąd, albo PC nie odzywa się od ponad 3 dni. Szczegóły: dotknięci
 
 Testy: `cd pc && python -m unittest discover -s tests -v` (działają na kopii danych 39player).
 
+Playlisty z telefonu: nowa playlista, dodawanie i usuwanie utworów, zmiana kolejności (Więcej → Zmień kolejność
+utworów: przeciąganie za uchwyt albo strzałki; w menu utworu – na początek / na koniec), zmiana nazwy i usunięcie
+playlisty (na PC plik trafia do Kosza). Playlist systemowych (Najlepsze, Polubione, Do odsłuchania) nie zmienia się
+bezpośrednio – idą przez serduszka. Pozostałości przerwanych zapisów (`*.tmp` na NAS, niedokończone pobranie biblioteki
+na telefonie) są sprzątane automatycznie.
+
 Formaty plików wymienianych przez NAS mają wzorce w `protocol/` (opis: `protocol/README.md`) – sprawdzają je testy
 Python (`pc/tests/test_protocol.py`, kod 39player i sync39) i Kotlin (`ProtocolTest`, `./gradlew testDebugUnitTest`),
 więc niezgodność formatu między telefonem a PC wychodzi w testach, zanim trafi na urządzenia.

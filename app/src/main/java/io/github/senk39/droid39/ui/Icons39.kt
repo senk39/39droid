@@ -15,6 +15,13 @@ object Icons39 {
     }
 
     val Play = icon("play", "M8 5v14l11-7z")
+    val DragHandle = icon("drag_handle", "M20 9H4v2h16V9zM4 15h16v-2H4v2z")
+    val Edit = icon("edit", "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z")
+    val Delete = icon("delete", "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z")
+    val ArrowUp = icon("arrow_up", "M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z")
+    val ArrowDown = icon("arrow_down", "M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z")
+    val ToTop = icon("to_top", "M8 11h3v10h2V11h3l-4-4-4 4zM4 3v2h16V3H4z")
+    val ToBottom = icon("to_bottom", "M16 13h-3V3h-2v10H8l4 4 4-4zM4 19v2h16v-2H4z")
     val Pause = icon("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
     val Next = icon("next", "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z")
     val Prev = icon("prev", "M6 6h2v12H6zm3.5 6l8.5 6V6z")

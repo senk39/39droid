@@ -320,6 +320,17 @@ class SyncManager(
         return true
     }
 
+    /**
+     * Pozostałości przerwanej synchronizacji (np. telefon wyłączony w trakcie pobierania biblioteki – do kilkudziesięciu
+     * MB na karcie). Wołane przy starcie aplikacji, zanim ruszy synchronizacja.
+     */
+    fun cleanLeftovers(): Int {
+        if (mutex.isLocked) return 0
+        val dir = library.snapshotDir()
+        return listOf("incoming.db", "incoming.db-journal", "state.db", "state.db-journal")
+            .count { File(dir, it).let { f -> f.exists() && f.delete() } }
+    }
+
     /** Ile bajtów ma pełna biblioteka odłożona do Wi-Fi (0 – nic nie czeka). */
     @Volatile private var deferredFullBytes = 0L
 

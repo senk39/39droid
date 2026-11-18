@@ -96,6 +96,22 @@ class FakeLib:
     def remove_from_playlist(self, rel, ids):
         self.calls.append(("remove_from_playlist", rel, list(ids)))
 
+    def move_in_playlist(self, rel, tid, before=None):
+        self.calls.append(("move_in_playlist", rel, tid, before))
+        return True
+
+    def rename_playlist_item(self, rel, new_name):
+        self.calls.append(("rename_playlist_item", rel, new_name))
+        parent = rel.rpartition("/")[0]
+        os.rename(self.playlist_path(rel), self.playlist_path(f"{parent}/{new_name}" if parent else new_name))
+        return f"{parent}/{new_name}" if parent else new_name
+
+    def delete_playlists(self, rels):
+        self.calls.append(("delete_playlists", list(rels)))
+        for r in rels:
+            os.remove(self.playlist_path(r))
+        return len(rels), []
+
 
 @unittest.skipUnless(os.path.isdir(os.path.join(PLAYER_DIR, "player39")), "brak 39player")
 class ProtocolTest(unittest.TestCase):
@@ -138,13 +154,14 @@ class ProtocolTest(unittest.TestCase):
         DL = self.DL
         d = os.path.join(self.sync, "inbox", "0123456789abcdef")
         os.makedirs(d)
-        shutil.copy(os.path.join(PROTOCOL, "journal.json"), os.path.join(d, "j-0000000041-0000000047.json"))
+        shutil.copy(os.path.join(PROTOCOL, "journal.json"), os.path.join(d, "j-0000000041-0000000050.json"))
         events, name, ok = DL.read_events(DL.pending(self.sync)["0123456789abcdef"], 0)
-        self.assertEqual((len(events), name, len(ok)), (7, "Galaxy A55", 1))
+        self.assertEqual((len(events), name, len(ok)), (10, "Galaxy A55", 1))
         self.assertTrue({e["type"] for e in events} <= DL.KNOWN)
         last, stats = DL.apply_collected(self.lib, DL.collect(self.sync), log=lambda s: None)
-        self.assertEqual(last, {"0123456789abcdef": 47})
+        self.assertEqual(last, {"0123456789abcdef": 50})
         self.assertFalse({"nieznane", "błędy", "brak utworu"} & set(stats), stats)
+        self.assertEqual(DL.load_rejected(self.sync, "0123456789abcdef"), [])
         calls = [c for c in self.lib.calls if c[0] != "touch_hearts"]
         self.assertEqual(calls, [
             ("set_heart", [1001], 2),
@@ -153,6 +170,9 @@ class ProtocolTest(unittest.TestCase):
             ("create_playlist", "Na drogę.m3u8", "Z telefonu"),
             ("add_to_playlist", "Z telefonu/Na drogę.m3u8", [1001]),
             ("remove_from_playlist", "Ulubione.m3u8", [1002]),
+            ("move_in_playlist", "Z telefonu/Na drogę.m3u8", 1001, 1002),
+            ("rename_playlist_item", "Z telefonu/Na drogę.m3u8", "W drogę.m3u8"),
+            ("delete_playlists", ["Ulubione.m3u8"]),
         ])
         self.assertIn(("touch_hearts", [1001], 1795000000.5), self.lib.calls)   # chwila kliknięcia na telefonie
         self.assertEqual(self.lib.con.execute("SELECT play_count FROM tracks WHERE id=1001").fetchone()[0], 1)

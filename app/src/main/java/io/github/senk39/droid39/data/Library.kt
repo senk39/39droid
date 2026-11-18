@@ -141,7 +141,7 @@ class Library(
                     if (op.extra == "1") plays[tid] = (plays[tid] ?: 0) + 1
                     last[tid] = maxOf(last[tid] ?: 0L, op.ts)
                 }
-                "pl_add", "pl_remove", "pl_create" -> pl += op
+                "pl_add", "pl_remove", "pl_create", "pl_rename", "pl_delete", "pl_move" -> pl += op
             }
         }
         heartOv = hearts; markOv = marks; playOv = plays; lastPlayOv = last; plOps = pl
@@ -230,8 +230,12 @@ class Library(
         changed()
     }
 
+    /** Nazwa pliku playlisty jak w 39player (Library.clean_name): bez znaków niedozwolonych w Windows. */
+    private fun cleanPlaylistName(name: String): String =
+        name.map { if (it in "<>:\"/\\|?*" || it.code < 32) '_' else it }.joinToString("").trim().trimEnd('.')
+
     fun createPlaylist(name: String, folder: String = ""): String {
-        val clean = name.map { if (it in "<>:\"/\\|?*" || it.code < 32) '_' else it }.joinToString("").trim().trimEnd('.')
+        val clean = cleanPlaylistName(name)
         require(clean.isNotEmpty()) { "Podaj nazwę playlisty." }
         val file = if (clean.endsWith(".m3u8", true) || clean.endsWith(".m3u", true)) clean else "$clean.m3u8"
         val rel = if (folder.isNotEmpty()) "$folder/$file" else file
@@ -241,40 +245,109 @@ class Library(
         return rel
     }
 
+    /** Zmiana nazwy playlisty (w tym samym folderze). Zwraca nową ścieżkę względną. */
+    fun renamePlaylist(rel: String, newName: String): String {
+        val clean = cleanPlaylistName(newName)
+        require(clean.isNotEmpty()) { "Podaj nazwę playlisty." }
+        val ext = "." + rel.substringAfterLast('.', "m3u8")
+        val file = if (clean.endsWith(".m3u8", true) || clean.endsWith(".m3u", true)) clean else clean + ext
+        val folder = rel.substringBeforeLast('/', "")
+        val newRel = if (folder.isNotEmpty()) "$folder/$file" else file
+        if (newRel == rel) return rel
+        require(newRel.equals(rel, true) || playlists(includeHidden = true).none { it.rel.equals(newRel, true) }) {
+            "Playlista „${file.substringBeforeLast('.')}” już istnieje."
+        }
+        local.addOp("pl_rename", null, null, rel, 0, newRel)
+        changed()
+        return newRel
+    }
+
+    /** Usunięcie playlisty (na PC trafia do Kosza). */
+    fun deletePlaylist(rel: String) {
+        local.addOp("pl_delete", null, null, rel, 0)
+        changed()
+    }
+
+    /** Przeniesienie utworu w playliście przed [before] (null – na koniec). */
+    fun movePlaylistTrack(rel: String, row: TrackRow, before: TrackRow?) {
+        if (before?.id == row.id) return
+        local.addOp("pl_move", row.id, row.rel, rel, before?.id ?: 0, before?.rel)
+        changed()
+    }
+
+    /** Playlista po zmianach z telefonu: [origin] – ścieżka w migawce z PC (null – utworzona na telefonie). */
+    private class PlState(val origin: String?, var rel: String) {
+        val ops = ArrayList<LocalDb.Op>()
+    }
+
+    /** Playlisty po nałożeniu zmian z telefonu (zmiany nazw, usunięcia, nowe), klucz – bieżąca ścieżka małymi literami. */
+    private fun plStates(base: List<PlaylistRow>): LinkedHashMap<String, PlState> {
+        val map = LinkedHashMap<String, PlState>()
+        for (p in base) if (p.kind != "dir") map[p.rel.lowercase()] = PlState(p.rel, p.rel)
+        for (op in plOps) {
+            val pl = op.playlist ?: continue
+            val k = pl.lowercase()
+            when (op.type) {
+                "pl_create" -> if (k !in map) map[k] = PlState(null, pl)
+                "pl_rename" -> {
+                    val st = map.remove(k) ?: continue
+                    st.rel = op.extra ?: continue
+                    map[st.rel.lowercase()] = st
+                }
+                "pl_delete" -> map.remove(k)
+                else -> map[k]?.ops?.add(op)
+            }
+        }
+        return map
+    }
+
     // ---------------------------------------------------------------- playlisty (z nakładką)
     fun playlists(includeHidden: Boolean = false): List<PlaylistRow> {
         val base = withSnap { it.playlists } ?: emptyList()
-        val out = base.filter { includeHidden || !it.hidden }.toMutableList()
-        val known = base.map { it.rel.lowercase() }.toHashSet()
-        var fake = -1
-        for (op in plOps) {
-            if (op.type == "pl_create" && op.playlist != null && op.playlist.lowercase() !in known) {
-                known += op.playlist.lowercase()
-                val folder = op.playlist.substringBeforeLast('/', "")
-                out += PlaylistRow(fake--, op.playlist, op.playlist.substringAfterLast('/').substringBeforeLast('.'),
-                    folder, "local", false, 0, 0)
-            }
+        val states = plStates(base)
+        val byOrigin = states.values.filter { it.origin != null }.associateBy { it.origin!!.lowercase() }
+        val out = ArrayList<PlaylistRow>()
+        for (p in base) {
+            if (!includeHidden && p.hidden) continue
+            if (p.kind == "dir") { out += p; continue }
+            val st = byOrigin[p.rel.lowercase()] ?: continue                     // usunięta na telefonie
+            out += if (st.rel == p.rel && st.ops.isEmpty()) p
+            else p.copy(rel = st.rel, name = st.rel.substringAfterLast('/').substringBeforeLast('.'),
+                count = playlistTrackIds(st.rel).size)
         }
-        // liczba utworów przeliczana tylko dla playlist zmienionych na telefonie
-        val touched = plOps.mapNotNullTo(HashSet()) { it.playlist?.lowercase() }
-        return out.map { if (it.kind == "dir" || it.rel.lowercase() !in touched) it else it.copy(count = playlistTrackIds(it.rel).size) }
+        var fake = -1
+        for (st in states.values) {
+            if (st.origin != null) continue
+            out += PlaylistRow(fake--, st.rel, st.rel.substringAfterLast('/').substringBeforeLast('.'),
+                st.rel.substringBeforeLast('/', ""), "local", false, playlistTrackIds(st.rel).size, 0)
+        }
+        return out
     }
+
+    /** Playlistę można zmieniać na telefonie (nie systemowa: Najlepsze, Polubione, Do odsłuchania). */
+    fun playlistEditable(rel: String): Boolean =
+        playlists(includeHidden = true).firstOrNull { it.rel.equals(rel, true) }?.kind.let { it == "pl" || it == "local" }
 
     fun playlistByKind(kind: String): PlaylistRow? = withSnap { s -> s.playlists.firstOrNull { it.kind == kind } }
 
     fun playlistTrackIds(rel: String): List<Int> {
-        val base = withSnap { s ->
-            s.playlists.firstOrNull { it.rel.equals(rel, true) && it.kind != "dir" }?.let { s.playlistTrackIds(it.id) }
-        } ?: emptyList()
-        val list = LinkedHashSet(base)
-        for (op in plOps) {
-            if (op.playlist == null || !op.playlist.equals(rel, true) || op.trackId == null) continue
+        val all = withSnap { it.playlists } ?: emptyList()
+        val st = plStates(all)[rel.lowercase()] ?: return emptyList()
+        val list = ArrayList<Int>(withSnap { s ->
+            st.origin?.let { o -> s.playlists.firstOrNull { it.rel.equals(o, true) && it.kind != "dir" } }?.let { s.playlistTrackIds(it.id) }
+        } ?: emptyList())
+        for (op in st.ops) {
+            val tid = op.trackId ?: continue
             when (op.type) {
-                "pl_add" -> list.add(op.trackId)
-                "pl_remove" -> list.remove(op.trackId)
+                "pl_add" -> if (tid !in list) list.add(tid)
+                "pl_remove" -> list.remove(tid)
+                "pl_move" -> if (list.remove(tid)) {
+                    val at = if (op.value > 0) list.indexOf(op.value) else -1
+                    if (at >= 0) list.add(at, tid) else list.add(tid)
+                }
             }
         }
-        return list.toList()
+        return list
     }
 
     fun playlistTracks(rel: String): List<TrackRow> = withSnap { it.tracksByIds(playlistTrackIds(rel)) } ?: emptyList()

@@ -350,6 +350,22 @@ fun TrackActionsSheet(rows: List<TrackRow>, ctx: ListCtx, onDismiss: () -> Unit)
                     g.scope.launch(Dispatchers.IO) { lib.removeFromPlaylist(ctx.playlistRel, rows) }
                     onDismiss()
                 }
+                if (rows.size == 1) {
+                    val plRel = ctx.playlistRel
+                    SheetItem(Icons39.ToTop, "Przenieś na początek playlisty") {
+                        g.scope.launch(Dispatchers.IO) {
+                            val first = lib.playlistTrackIds(plRel).firstOrNull()?.takeIf { it != r.id }
+                            if (first != null) lib.movePlaylistTrack(plRel, r, lib.track(first))
+                        }
+                        onDismiss()
+                    }
+                    SheetItem(Icons39.ToBottom, "Przenieś na koniec playlisty") {
+                        g.scope.launch(Dispatchers.IO) {
+                            if (lib.playlistTrackIds(plRel).lastOrNull() != r.id) lib.movePlaylistTrack(plRel, r, null)
+                        }
+                        onDismiss()
+                    }
+                }
             }
             if (rows.size == 1) {
                 SheetItem(Icons39.Info, "Informacje o utworze (VocaDB)") { info = true }

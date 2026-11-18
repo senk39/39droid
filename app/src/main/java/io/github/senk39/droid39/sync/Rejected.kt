@@ -17,6 +17,7 @@ data class RejectedChange(
     val rel: String?,
     val playlist: String?,
     val level: Int?,
+    val newPlaylist: String? = null,
     val what: String = "",
 ) {
     companion object {
@@ -38,13 +39,15 @@ data class RejectedChange(
                     rel = o.optString("rel").takeIf { it.isNotEmpty() && !o.isNull("rel") },
                     playlist = o.optString("playlist").takeIf { it.isNotEmpty() && !o.isNull("playlist") },
                     level = if (o.has("level") && !o.isNull("level")) o.optInt("level") else null,
+                    newPlaylist = o.optString("new_playlist").takeIf { it.isNotEmpty() && !o.isNull("new_playlist") },
                 )
             }.sortedBy { it.seq }
         }
 
         /** „Dodanie do „Nazwa”: Tytuł – Wykonawca” – opis zmiany dla użytkownika. */
         fun describe(c: RejectedChange, track: String?): String {
-            val pl = c.playlist?.substringAfterLast('/')?.removeSuffix(".m3u8")?.removeSuffix(".m3u")
+            fun name(rel: String?) = rel?.substringAfterLast('/')?.removeSuffix(".m3u8")?.removeSuffix(".m3u")
+            val pl = name(c.playlist)
             val song = track ?: c.rel?.substringAfterLast('/') ?: c.trackId?.let { "utwór #$it" }
             val action = when (c.type) {
                 "heart" -> when (c.level) { 2 -> "♥♥"; 1 -> "♥"; else -> "Zdjęcie serduszka" }
@@ -53,9 +56,12 @@ data class RejectedChange(
                 "pl_add" -> "Dodanie do „$pl”"
                 "pl_remove" -> "Usunięcie z „$pl”"
                 "pl_create" -> "Nowa playlista „$pl”"
+                "pl_rename" -> "Zmiana nazwy playlisty „$pl” na „${name(c.newPlaylist)}”"
+                "pl_delete" -> "Usunięcie playlisty „$pl”"
+                "pl_move" -> "Zmiana kolejności w „$pl”"
                 else -> "Zmiana „${c.type}”"
             }
-            return if (song != null && c.type != "pl_create") "$action: $song" else action
+            return if (song != null && c.type !in setOf("pl_create", "pl_rename", "pl_delete")) "$action: $song" else action
         }
     }
 }

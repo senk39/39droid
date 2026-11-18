@@ -129,6 +129,14 @@ class Offline(private val settings: Settings, private val library: Library, priv
         if (added) onPinned?.invoke()
     }
 
+    /** Playlista przemianowana / usunięta na telefonie – przypięcie „offline” idzie za nią. */
+    fun playlistRenamed(old: String, new: String?) {
+        val set = settings.offlinePlaylists.toMutableSet()
+        if (!set.remove(old)) return
+        if (new != null) set += new
+        settings.offlinePlaylists = set
+    }
+
     fun togglePlaylist(rel: String) {
         val set = settings.offlinePlaylists.toMutableSet()
         val added = set.add(rel)

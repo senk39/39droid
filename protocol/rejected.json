@@ -21,6 +21,15 @@
    "track": 1001,
    "rel": "Vocaloid/DECO*27/[2020.01.01] Ghost Rule/01 - ゴーストルール.mp3",
    "playlist": "Z telefonu/Na drogę.m3u8"
+  },
+  {
+   "seq": 49,
+   "ts": 1795000080.5,
+   "type": "pl_rename",
+   "reason": "Nie zmieniono nazwy na PC: „W drogę.m3u8” już istnieje.",
+   "at": 1795000400.0,
+   "playlist": "Z telefonu/Na drogę.m3u8",
+   "new_playlist": "Z telefonu/W drogę.m3u8"
   }
  ]
 }

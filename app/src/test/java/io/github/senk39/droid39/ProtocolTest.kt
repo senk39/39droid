@@ -49,6 +49,9 @@ class ProtocolTest {
             LocalDb.Op(45, 1795000040500, "pl_create", null, null, "Z telefonu/Na drogę.m3u8", 0, null),
             LocalDb.Op(46, 1795000050500, "pl_add", 1001, rel1, "Z telefonu/Na drogę.m3u8", 0, null),
             LocalDb.Op(47, 1795000060500, "pl_remove", 1002, rel2, "Ulubione.m3u8", 0, null),
+            LocalDb.Op(48, 1795000070500, "pl_move", 1001, rel1, "Z telefonu/Na drogę.m3u8", 1002, rel2),
+            LocalDb.Op(49, 1795000080500, "pl_rename", null, null, "Z telefonu/Na drogę.m3u8", 0, "Z telefonu/W drogę.m3u8"),
+            LocalDb.Op(50, 1795000090500, "pl_delete", null, null, "Ulubione.m3u8", 0, null),
         )
         val got = Protocol.journal(ops, dev, "Galaxy A55", "39droid 0.1.0", 1795000100.25)
         assertEquals(norm(json("journal.json")), norm(JSONObject(got.toString(1))))
@@ -119,7 +122,9 @@ class ProtocolTest {
     @Test
     fun rejectedIsRead() {
         val r = RejectedChange.parseAll(text("rejected.json"))
-        assertEquals(listOf(41L, 46L), r.map { it.seq })
+        assertEquals(listOf(41L, 46L, 49L), r.map { it.seq })
+        assertEquals("Z telefonu/W drogę.m3u8", r[2].newPlaylist)
+        assertEquals("Zmiana nazwy playlisty „Na drogę” na „W drogę”", RejectedChange.describe(r[2], null))
         assertEquals(2, r[0].level)
         assertEquals(1001, r[1].trackId)
         assertEquals("Z telefonu/Na drogę.m3u8", r[1].playlist)

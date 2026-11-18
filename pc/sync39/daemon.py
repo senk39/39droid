@@ -222,6 +222,7 @@ class Daemon:
         self.export_retry_at = 0.0
         self.last_full_mirror = 0.0
         self.started = time.time()
+        self.cleaned_at = 0.0
         self._pc_key = None
         self._pc_at = 0.0
 
@@ -300,6 +301,9 @@ class Daemon:
     def phone_cycle(self) -> None:
         if not self.sync_dir or not reachable(self.sync_dir):
             return
+        if time.time() - self.cleaned_at > 3600:
+            self.cleaned_at = time.time()
+            self.clean_sync_dir()
         try:
             if inbox.pending(self.sync_dir) and not p39.running_instances():
                 log.info("Zmiany z telefonu (39player zamknięty) – import")
@@ -336,6 +340,19 @@ class Daemon:
                 self.export_retry_at = self.last_export + EXPORT_RETRY_S
                 set_status(state="error", message="Eksport dla telefonu nie powiódł się – ponowna próba za "
                                                   f"{EXPORT_RETRY_S // 60} min, zob. sync39.log")
+
+    def clean_sync_dir(self) -> int:
+        """Pozostałości przerwanych zapisów w folderze synchronizacji (*.tmp starsze niż godzina) – kod 39player."""
+        try:
+            p39.add_path(self.cfg["player39_dir"])
+            from player39 import droid_link
+            n = droid_link.clean_stale_tmp(self.sync_dir)
+        except (Exception, SystemExit) as e:                       # noqa: BLE001 – stary 39player, brak NAS
+            log.info("Sprzątanie folderu synchronizacji pominięte: %s", e)
+            return 0
+        if n:
+            log.info("Usunięto pozostałości przerwanych zapisów w folderze synchronizacji: %s", n)
+        return n
 
     # ------------------------------------------------------------------ stan dla telefonu
     def pc_status(self) -> dict:
