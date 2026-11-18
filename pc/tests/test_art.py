@@ -66,6 +66,32 @@ class ArtExportTest(unittest.TestCase):
         again = self.art.export(self.lib, self.sync, self.arts, size=32, log=lambda *a: None)
         self.assertEqual(again["todo"], 0)                            # przyrostowo – nic do zrobienia
 
+    def test_broken_front_cover_falls_back_to_next_image(self):
+        """Jak w „Hane Ito”: okładka przednia w tagach bez nagłówka JPEG, obok poprawna – i obraz ucięty o kilka
+        bajtów (jak „GABI”)."""
+        import io
+
+        from mutagen.id3 import APIC, ID3
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), (200, 10, 10)).save(buf, "JPEG")
+        good = buf.getvalue()
+        d = os.path.join(self.tmp, "broken")
+        os.makedirs(d)
+        tracks, arts = {}, {}
+        for i, pics in enumerate([[(3, b"P\x00\x00" + good[3:]), (0, good)], [(3, good[:-7])]]):
+            p = os.path.join(d, f"{i}.mp3")
+            with open(p, "wb") as f:
+                f.write(b"\0" * 16)
+            tags = ID3()
+            for kind, data in pics:
+                tags.add(APIC(encoding=3, mime="image/jpeg", type=kind, desc=str(kind), data=data))
+            tags.save(p)
+            tracks[i] = SimpleNamespace(path=p, pathkey=p.lower(), disc_no=0, track_no=1, mtime=1_700_000_000)
+            arts[f"broken{i}"] = (d, [i])
+        stats = self.art.export(SimpleNamespace(tracks=tracks), self.sync, arts, size=32, log=lambda *a: None)
+        self.assertEqual((stats["written"], stats["errors"]), (2, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -56,6 +56,11 @@ class SyncManager(
 
     private fun syncDir() = settings.syncPath.ifBlank { "39sync" }
 
+    private companion object {
+        /** Zmian w jednym pliku dziennika. */
+        const val CHUNK = 500
+    }
+
     /** Pełna synchronizacja. Zwraca opis wyniku. */
     suspend fun syncNow(): Result<String> = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -141,37 +146,76 @@ class SyncManager(
         true
     }
 
-    /** Wysłanie dziennika z opóźnieniem (zbiera kilka szybkich zmian w jeden plik). */
+    private var pushFailures = 0
+
+    /**
+     * Wysłanie dziennika z opóźnieniem (zbiera kilka szybkich zmian w jeden plik). Po nieudanej próbie – ponowienie
+     * po 30 s, 1, 2 i najwyżej 5 min; status pokazuje, co poszło nie tak i kiedy będzie następna próba.
+     */
     fun schedulePush(delayMs: Long = 20_000) {
         pushJob?.cancel()
         pushJob = scope.launch(Dispatchers.IO) {
             delay(delayMs)
-            if (!settings.nasConfigured || nas.recentlyFailed(60_000)) return@launch
-            runCatching { mutex.withLock { pushLocked() } }
+            if (!settings.nasConfigured) return@launch
+            if (!mutex.tryLock()) {                               // trwa pełna synchronizacja – ona też wysyła
+                schedulePush(15_000)
+                return@launch
+            }
+            try {
+                val sent = pushLocked()
+                pushFailures = 0
+                if (sent > 0) {
+                    val at = java.text.SimpleDateFormat("HH:mm", Locale.ROOT).format(java.util.Date())
+                    _status.value = SyncStatus(false, "Wysłano zmiany do PC: $sent ($at)")
+                }
+            } catch (e: Exception) {
+                pushFailures++
+                val wait = longArrayOf(30_000, 60_000, 120_000, 300_000)[minOf(pushFailures, 4) - 1]
+                _status.value = SyncStatus(false, "", error = "Nie wysłano zmian: ${e.message ?: e.javaClass.simpleName}" +
+                    " – ponowna próba za ${if (wait < 60_000) "${wait / 1000} s" else "${wait / 60_000} min"}")
+                schedulePush(wait)
+            } finally {
+                mutex.unlock()
+            }
         }
     }
 
     // ---------------------------------------------------------------- dziennik zmian → NAS
+    /** Wysyła niewysłane zmiany w częściach po [CHUNK] (duża zaległość nie idzie jednym wielkim plikiem). */
     private fun pushLocked(): Int {
         val ops = library.local.ops(settings.uploadedSeq)
         if (ops.isEmpty()) {
             nas.get()                                             // sprawdzenie połączenia
             return 0
         }
-        _status.value = SyncStatus(true, "Wysyłanie zmian (${ops.size})…")
-        val first = ops.first().seq
-        val last = ops.last().seq
-        val json = journal(ops)
-        val name = String.format(Locale.ROOT, "j-%010d-%010d.json", first, last)
+        val parts = ops.chunked(CHUNK)
         val dir = RemoteFs.join(syncDir(), "inbox", settings.deviceId)
-        nas.use { fs ->
-            val tmp = RemoteFs.join(dir, "$name.tmp")
-            fs.write(tmp, json.toByteArray(Charsets.UTF_8))
-            fs.rename(tmp, RemoteFs.join(dir, name))
+        for ((i, part) in parts.withIndex()) {
+            val json = journal(part).toByteArray(Charsets.UTF_8)
+            val partInfo = if (parts.size > 1) " · część ${i + 1}/${parts.size}" else ""
+            _status.value = SyncStatus(true, "Wysyłanie zmian do PC: ${describe(ops)} · ${kb(json.size)}$partInfo…",
+                if (parts.size > 1) i.toFloat() / parts.size else null)
+            val name = String.format(Locale.ROOT, "j-%010d-%010d.json", part.first().seq, part.last().seq)
+            nas.use { fs ->
+                val tmp = RemoteFs.join(dir, "$name.tmp")
+                fs.write(tmp, json)
+                fs.rename(tmp, RemoteFs.join(dir, name))
+            }
+            settings.uploadedSeq = part.last().seq                // wysłana część nie pójdzie drugi raz
         }
-        settings.uploadedSeq = last
         return ops.size
     }
+
+    /** „5 (odtworzenia: 3, serduszka: 2)” – co jest wysyłane. */
+    private fun describe(ops: List<LocalDb.Op>): String {
+        val names = linkedMapOf("play" to "odtworzenia", "heart" to "serduszka", "mark" to "oznaczenia")
+        val counts = ops.groupingBy { names[it.type] ?: "playlisty" }.eachCount()
+        return "${ops.size} (" + counts.entries.joinToString(", ") { "${it.key}: ${it.value}" } + ")"
+    }
+
+    private fun kb(bytes: Int): String =
+        if (bytes < 1024 * 1024) String.format(Locale.ROOT, "%.1f kB", bytes / 1024.0)
+        else String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0)
 
     private fun journal(ops: List<LocalDb.Op>): String {
         val events = JSONArray()

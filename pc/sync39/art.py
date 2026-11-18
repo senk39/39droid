@@ -11,6 +11,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 SAVE_EVERY = 500                      # postęp (indeks) zapisywany co tyle okładek – przerwany eksport nie zaczyna od zera
 
@@ -19,17 +20,52 @@ def art_path(sync_dir: str, key: str) -> str:
     return os.path.join(sync_dir, "art", key[:2], key + ".jpg")
 
 
-def _source(lib, tids) -> tuple[bytes | None, float]:
+def _all_embedded(path: str) -> list[bytes]:
+    """Wszystkie obrazy z tagów pliku (okładka przednia najpierw) – gdy pierwszy jest uszkodzony, kolejne."""
+    try:
+        import mutagen
+        from mutagen.id3 import ID3
+        from mutagen.mp4 import MP4
+    except ImportError:
+        return []
+    try:
+        f = mutagen.File(path)
+    except Exception:                                          # noqa: BLE001
+        f = None
+    if f is None:                                              # np. uszkodzone ramki audio – same tagi ID3 są czytelne
+        try:
+            f = SimpleNamespace(tags=ID3(path))
+        except Exception:                                      # noqa: BLE001
+            return []
+    out: list[tuple[int, bytes]] = []
+    tags = getattr(f, "tags", None)
+    if isinstance(f, MP4):
+        out += [(3, bytes(c)) for c in (tags or {}).get("covr", [])]
+    for p in getattr(f, "pictures", None) or []:
+        out.append((p.type, p.data))
+    if isinstance(tags, ID3):
+        out += [(int(a.type), a.data) for a in tags.getall("APIC")]
+    out.sort(key=lambda x: x[0] != 3)                          # 3 = okładka przednia
+    return [d for _t, d in out if d]
+
+
+def _sources(lib, tids):
+    """Kolejne kandydatki na okładkę albumu: (dane obrazu, czas modyfikacji). Najpierw okładka, którą wybiera
+    39player, potem pozostałe obrazy z tagów pierwszych utworów, na końcu plik obrazu w folderze."""
     from player39 import tags as T
     tracks = sorted((lib.tracks[i] for i in tids if i in lib.tracks),
                     key=lambda t: (t.disc_no or 0, t.track_no or 0, t.pathkey))
+    seen: set[int] = set()
     for t in tracks[:3]:
         try:
-            data = T.embedded_artwork(t.path)
+            first = T.embedded_artwork(t.path)
         except Exception:                                      # noqa: BLE001
-            data = None
-        if data:
-            return data, t.mtime or 0
+            first = None
+        for data in ([first] if first else []) + _all_embedded(t.path):
+            h = hash(data)
+            if h not in seen:
+                seen.add(h)
+                yield data, t.mtime or 0
     if tracks:
         try:
             p = T.folder_artwork(os.path.dirname(tracks[0].path))
@@ -37,12 +73,12 @@ def _source(lib, tids) -> tuple[bytes | None, float]:
             p = None
         if p:
             with open(p, "rb") as f:
-                return f.read(), os.path.getmtime(p)
-    return None, 0
+                yield f.read(), os.path.getmtime(p)
 
 
 def _thumb(data: bytes, size: int, quality: int) -> bytes:
-    from PIL import Image
+    from PIL import Image, ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = True                     # obraz ucięty o kilka bajtów – reszta jest dobra
     im = Image.open(io.BytesIO(data))
     im.draft("RGB", (size * 2, size * 2))                      # szybkie dekodowanie dużych JPEG
     im = im.convert("RGB")
@@ -79,15 +115,23 @@ def export(lib, sync_dir: str, arts: dict, size: int = 512, quality: int = 82, r
     t0 = time.time()
 
     def one(key):
-        tids = arts[key][1]
+        folder, tids = arts[key]
         try:
-            data, mt = _source(lib, tids)
-            if not data:
+            jpg, mt, last_err, found = None, 0, None, False
+            for data, when in _sources(lib, tids):
+                found = True
+                try:
+                    jpg, mt = _thumb(data, size, quality), when
+                    break
+                except Exception as e:                         # noqa: BLE001 – uszkodzony obraz: następny kandydat
+                    last_err = e
+            if not found:
                 with lock:
                     index[key] = 0                             # brak okładki – nie sprawdzaj przy każdym eksporcie
                     stats["none"] += 1
                 return
-            jpg = _thumb(data, size, quality)
+            if jpg is None:
+                raise ValueError(f"żaden obraz okładki nie jest poprawny ({last_err})")
             p = art_path(sync_dir, key)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             tmp = p + ".tmp"
@@ -101,7 +145,7 @@ def export(lib, sync_dir: str, arts: dict, size: int = 512, quality: int = 82, r
             with lock:
                 stats["errors"] += 1
                 if stats["errors"] <= 5:
-                    log(f"    błąd okładki {key}: {e}")
+                    log(f"    błąd okładki – {folder or key}: {e}")
 
     done = 0
     with ThreadPoolExecutor(max_workers=4) as ex:
