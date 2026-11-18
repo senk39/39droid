@@ -258,7 +258,23 @@ def cmd_autostart(cfg, args) -> int:
     return rc
 
 
+def _utf8_output() -> None:
+    """Wyjście przekierowane do pliku albo do sync39 w tle – UTF-8 (strona kodowa konsoli Windows nie ma np. „→”);
+    w konsoli – znaki spoza jej strony kodowej zastępowane, zamiast przerywać polecenie."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None:
+            continue
+        try:
+            if stream.isatty():
+                stream.reconfigure(errors="replace")
+            else:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None) -> int:
+    _utf8_output()
     ap = argparse.ArgumentParser(prog="sync39", description="Synchronizacja 39player ↔ 39droid przez NAS")
     ap.add_argument("--config", help="ścieżka sync39.json")
     sub = ap.add_subparsers(dest="cmd", required=True)

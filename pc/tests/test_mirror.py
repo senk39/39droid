@@ -111,10 +111,13 @@ class MirrorTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.dst, "Vocaloid", "stary.mp3")))
 
     def test_dry_run_changes_nothing(self):
+        os.makedirs(self.dst)
         p, stats = self.run_mirror(dry_run=True)
         self.assertEqual(len(p.copies), 61)
         self.assertEqual(stats, {})
-        self.assertFalse(any(os.scandir(self.dst)) if os.path.isdir(self.dst) else False)
+        with os.scandir(self.dst) as it:
+            self.assertIsNone(next(it, None))
+        self.assertFalse(os.path.exists(self.index))                # próba nie zapisuje indeksu
 
     def test_disconnected_source(self):
         self.run_mirror()

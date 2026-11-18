@@ -175,8 +175,9 @@ class Mirror:
     def initialized(self) -> bool:
         return bool(self.meta.get("initialized"))
 
-    def bootstrap_from_destination(self, src: dict) -> int:
-        """Pierwsze uruchomienie: indeks z tego, co już jest na NAS (pliki zgodne rozmiarem i czasem)."""
+    def bootstrap_from_destination(self, src: dict, save: bool = True) -> int:
+        """Pierwsze uruchomienie: indeks z tego, co już jest na NAS (pliki zgodne rozmiarem i czasem).
+        `save` = False (próba): indeks tylko w pamięci – prawdziwy przebieg zbuduje go od nowa."""
         self.log(f"  pierwsze uruchomienie – skanowanie kopii na NAS ({self.dst_root})…")
         t0 = time.time()
         dst, _unreadable = scan(self.dst_root)
@@ -203,7 +204,8 @@ class Mirror:
                 extra += 1
         self.index = idx
         self.meta["initialized"] = True
-        self.save()
+        if save:
+            self.save()
         self.log(f"  na NAS: {len(dst)} plików, zgodnych z PC: {matched} (w tym tylko rozmiarem: {size_only}), "
                  f"tylko na NAS: {extra} ({time.time() - t0:.0f} s)")
         return matched
@@ -341,6 +343,8 @@ def run_once(src_root: str, dst_root: str, index_path: str, *, delete: bool = Tr
     if not os.path.isdir(src_root):
         raise RuntimeError(f"Brak folderu muzyki {src_root} – dysk odłączony?")
     if not os.path.isdir(dst_root):
+        if dry_run:
+            raise RuntimeError(f"Brak folderu {dst_root} na NAS")
         os.makedirs(dst_root, exist_ok=True)
     m = Mirror(src_root, dst_root, index_path, threads, log, status)
     t0 = time.time()
@@ -350,7 +354,7 @@ def run_once(src_root: str, dst_root: str, index_path: str, *, delete: bool = Tr
     log(f"  PC: {len(src)} plików ({time.time() - t0:.1f} s)" +
         (f", nieczytelne foldery: {len(unreadable)}" if unreadable else ""))
     if not m.initialized:
-        m.bootstrap_from_destination(src)
+        m.bootstrap_from_destination(src, save=not dry_run)
     p = plan(src, unreadable, m.index, delete, max_ratio, min_guard, m.meta.get("last_count"), confirmed)
     log("  " + p.summary())
     if dry_run:

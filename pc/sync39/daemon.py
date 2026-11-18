@@ -130,8 +130,9 @@ def run_cli(*args: str, timeout: int = 3600) -> int:
     if os.path.exists(w):
         exe = w
     flags = 0x08000000 if os.name == "nt" else 0                 # bez okna konsoli
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
     out = subprocess.run([exe, "-m", "sync39", *args], cwd=settings.HERE, capture_output=True, text=True,
-                         encoding="utf-8", errors="replace", timeout=timeout, creationflags=flags)
+                         encoding="utf-8", errors="replace", timeout=timeout, creationflags=flags, env=env)
     for line in (out.stdout or "").splitlines()[-15:]:
         log.info("  %s", line)
     if out.returncode:
