@@ -80,15 +80,25 @@ def cmd_export(cfg, args) -> int:
     pdir = cfg["player39_dir"]
     t0 = time.time()
     log(f"Eksport biblioteki 39player → {sync_dir}")
+    # potwierdzenia PRZED kopią bazy: 39player zapisuje bazę, a dopiero potem applied.json – migawka nie może
+    # potwierdzić zmian, których jeszcze nie ma w skopiowanej bazie (telefon przestałby je nakładać)
+    applied = inbox.load_applied(sync_dir)
     data = p39.copy_data(pdir)
     lib = None
     try:
         lib, pcfg = p39.load_library(pdir, data)
-        applied = inbox.load_applied(sync_dir)
         work = tempfile.mkdtemp(prefix="sync39-out-")
         try:
             db = os.path.join(work, "library.db")
             stats = snapshot.build(lib, pcfg, db, applied, log)
+            content = snapshot.fingerprint(db)
+            if not args.force and _published(sync_dir, content):
+                log("  biblioteka bez zmian od poprzedniego eksportu – migawka nie jest publikowana ponownie")
+                if not args.no_art:
+                    art.export(lib, sync_dir, stats["arts"], int(cfg.get("art_size", 512)),
+                               int(cfg.get("art_quality", 82)), args.refresh_art, args.art_limit, log)
+                log(f"Gotowe w {time.time() - t0:.0f} s.")
+                return 0
             stamp = time.strftime("%Y%m%d-%H%M%S")
             name = f"library-{stamp}.db.gz"
             gz = os.path.join(work, name)
@@ -101,7 +111,7 @@ def cmd_export(cfg, args) -> int:
             manifest = {
                 "format": FORMAT, "generator": f"sync39 {VERSION}", "created": time.time(),
                 "snapshot": f"snapshot/{name}", "size": len(raw), "db_size": os.path.getsize(db),
-                "sha256": hashlib.sha256(raw).hexdigest(), "tracks": stats["tracks"],
+                "sha256": hashlib.sha256(raw).hexdigest(), "content": content, "tracks": stats["tracks"],
                 "applied": {k: v.get("seq", 0) for k, v in applied.items()},
             }
             _atomic_write(os.path.join(sync_dir, "manifest.json"),
@@ -125,6 +135,16 @@ def cmd_export(cfg, args) -> int:
         shutil.rmtree(data, ignore_errors=True)
     log(f"Gotowe w {time.time() - t0:.0f} s.")
     return 0
+
+
+def _published(sync_dir: str, content: str) -> bool:
+    """Na NAS jest już migawka o tej treści (manifest wskazuje istniejący plik)."""
+    try:
+        with open(os.path.join(sync_dir, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return m.get("content") == content and os.path.isfile(os.path.join(sync_dir, m.get("snapshot") or "-"))
 
 
 def _guard_running(force: bool) -> None:
@@ -304,6 +324,7 @@ def main(argv=None) -> int:
     e.add_argument("--out", help="zapisz tylko plik biblioteki (.db.gz) do podanej ścieżki lub folderu – bez NAS")
     e.add_argument("--refresh-art", action="store_true", help="przelicz wszystkie miniatury")
     e.add_argument("--art-limit", type=int, default=None, help="najwyżej tyle nowych miniatur (test)")
+    e.add_argument("--force", action="store_true", help="opublikuj migawkę także wtedy, gdy biblioteka się nie zmieniła")
     i = sub.add_parser("import", help="zmiany z telefonu → 39player")
     i.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostałoby zastosowane")
     i.add_argument("--force", action="store_true", help="nie sprawdzaj, czy 39player działa (niezalecane)")

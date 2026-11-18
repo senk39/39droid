@@ -368,5 +368,21 @@ def build(lib, cfg: dict, out_path: str, applied: dict | None = None, log=print)
     return {"tracks": len(rows), "arts": arts}
 
 
+def fingerprint(path: str) -> str:
+    """Skrót treści migawki bez chwili utworzenia – ta sama treść daje ten sam skrót (eksport bez zmian w bibliotece
+    nie jest publikowany, więc telefon nie pobiera drugi raz tej samej biblioteki)."""
+    con = sqlite3.connect(path)
+    h = hashlib.sha256()
+    try:
+        for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall():
+            h.update(repr(t).encode("utf-8"))
+            q = f'SELECT * FROM "{t}"' + (" WHERE key <> 'created'" if t == "info" else "")
+            for row in con.execute(q):
+                h.update(repr(row).encode("utf-8"))
+    finally:
+        con.close()
+    return h.hexdigest()
+
+
 def _icon(L, name: str) -> str | None:
     return L.icon_name(name) if L.icon_path(name) else None

@@ -123,6 +123,30 @@ class Sync39Test(unittest.TestCase):
         self.assertEqual(con.execute("SELECT COUNT(*) FROM track WHERE rel LIKE '%\\%' OR rel LIKE '_:%'").fetchone()[0], 0)
         con.close()
 
+    def test_unchanged_library_is_not_republished(self):
+        """Eksport bez zmian w bibliotece daje ten sam skrót treści (telefon nie pobiera drugi raz tej samej
+        biblioteki); nowe potwierdzenie zmian z telefonu zmienia skrót."""
+        import time
+        from sync39 import snapshot
+        from sync39.__main__ import _published
+        a, b, c = (os.path.join(self.tmp, f"fp-{x}.db") for x in "abc")
+        snapshot.build(self.lib, self.cfg, a, {"dev": {"seq": 3}}, log=lambda *x: None)
+        time.sleep(0.05)                                   # inna chwila utworzenia
+        snapshot.build(self.lib, self.cfg, b, {"dev": {"seq": 3}}, log=lambda *x: None)
+        snapshot.build(self.lib, self.cfg, c, {"dev": {"seq": 4}}, log=lambda *x: None)
+        fa = snapshot.fingerprint(a)
+        self.assertEqual(fa, snapshot.fingerprint(b))
+        self.assertNotEqual(fa, snapshot.fingerprint(c))
+        sync = os.path.join(self.tmp, "fp-sync")
+        os.makedirs(os.path.join(sync, "snapshot"))
+        self.assertFalse(_published(sync, fa))             # brak manifestu
+        with open(os.path.join(sync, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"snapshot": "snapshot/library-1.db.gz", "content": fa}, f)
+        self.assertFalse(_published(sync, fa))             # manifest wskazuje nieistniejący plik
+        open(os.path.join(sync, "snapshot", "library-1.db.gz"), "wb").close()
+        self.assertTrue(_published(sync, fa))
+        self.assertFalse(_published(sync, snapshot.fingerprint(c)))
+
     def test_gzip_roundtrip_and_art_key(self):
         from sync39 import snapshot
         a = snapshot.art_key("vocaloid/! single", "Plot 0")
