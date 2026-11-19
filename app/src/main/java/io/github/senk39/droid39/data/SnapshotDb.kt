@@ -3,6 +3,7 @@ package io.github.senk39.droid39.data
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.Closeable
 import java.io.File
 
@@ -252,6 +253,67 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
         return out
     }
 
+    private fun hasTable(name: String): Boolean =
+        db.rawQuery("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(name)).use { it.moveToFirst() }
+
+    /** Źródła wiki (migawki sprzed wiki – puste). */
+    val wikiSources: Map<String, WikiSource> by lazy {
+        if (!hasTable("wiki_source")) return@lazy emptyMap()
+        LinkedHashMap<String, WikiSource>().also { m ->
+            db.rawQuery("SELECT id, name, site, prefix, franchise, manual_only, color FROM wiki_source ORDER BY pos", null).use { c ->
+                while (c.moveToNext()) m[c.getString(0)] = WikiSource(
+                    c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4) ?: "",
+                    c.getInt(5) != 0, c.getString(6) ?: "#9A9AA0",
+                )
+            }
+        }
+    }
+
+    /** Kategorie bez VocaDB (39player: Anime, Gry, Muzyka azjatycka, Touhou) – klucze węzłów najwyższego poziomu. */
+    val noVdbRoots: Set<String> by lazy {
+        runCatching {
+            val a = JSONArray(info["no_vdb"] ?: "[]")
+            (0 until a.length()).map { a.getString(it) }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    fun wikiLinks(trackId: Int): List<WikiLink> {
+        if (wikiSources.isEmpty()) return emptyList()
+        val out = ArrayList<WikiLink>()
+        db.rawQuery("SELECT src, page, kind, album_page FROM wiki_link WHERE track_id = ?", arrayOf(trackId.toString())).use { c ->
+            while (c.moveToNext()) {
+                val src = wikiSources[c.getString(0)] ?: continue
+                out += WikiLink(src, c.getString(1), c.getString(2), c.getString(3))
+            }
+        }
+        val order = wikiSources.keys.toList()
+        return out.sortedBy { order.indexOf(it.source.id) }
+    }
+
+    fun wikiPage(src: String, page: String): WikiPage? {
+        if (!hasTable("wiki_page")) return null
+        val js = db.rawQuery("SELECT data FROM wiki_page WHERE src = ? AND page = ?", arrayOf(src, page)).use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        } ?: return null
+        return runCatching { parseWikiPage(JSONObject(js), page) }.getOrNull()
+    }
+
+    private fun parseWikiPage(o: JSONObject, page: String): WikiPage {
+        fun strings(key: String) = o.optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+        fun pairs(key: String) = o.optJSONArray(key)?.let { a ->
+            (0 until a.length()).mapNotNull { i -> a.optJSONArray(i)?.let { p -> p.optString(0) to p.optString(1) } }
+        } ?: emptyList()
+        val lyrics = o.optJSONArray("lyrics")?.let { a ->
+            (0 until a.length()).mapNotNull { i -> a.optJSONObject(i) }.map { WikiLyric(it.optString("label"), it.optString("value")) }
+                .filter { it.value.isNotBlank() }
+        } ?: emptyList()
+        return WikiPage(
+            title = o.optString("title", page), url = o.optString("url"), ja = o.optString("ja"), meaning = o.optString("meaning"),
+            info = pairs("info"), intro = strings("intro"), description = o.optString("description"), tracks = pairs("tracks"),
+            trivia = strings("trivia"), lives = strings("lives"), lyrics = lyrics,
+        )
+    }
+
     fun vdb(trackId: Int): VdbInfo? {
         val tagsOf = ArrayList<TagRow>()
         db.rawQuery("SELECT tag_id FROM track_tag WHERE track_id = ?", arrayOf(trackId.toString())).use { c ->
@@ -381,6 +443,7 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
             "Copyrights" to "Prawa autorskie", "Sources" to "Źródła", "Series" to "Serie", "Vocalists" to "Wokaliści",
             "Instruments" to "Instrumenty", "Composition" to "Kompozycja", "Languages" to "Języki", "Lyrics" to "Tekst",
             "Media" to "Media", "Distribution" to "Dystrybucja", "Event" to "Wydarzenia", "" to "Bez kategorii",
+            "View count milestones" to "Liczba wyświetleń",
         )
     }
 }

@@ -143,6 +143,8 @@ fun PlayerScreen() {
     val accent = LocalAccent.current
     val overlay by g.library.overlayVersion.collectAsState()
     val vdb = rememberLoad("vdb", row?.id) { row?.let { g.library.vdb(it.id) } }
+    val wiki = rememberLoad("wiki", row?.id) { row?.let { g.library.wikiLinks(it.id) } } ?: emptyList()
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     var menu by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
     var addPl by remember { mutableStateOf(false) }
@@ -192,11 +194,15 @@ fun PlayerScreen() {
                     HeartIcon(heart, 30.dp, onClick = { g.scope.launch(Dispatchers.IO) { g.library.cycleHeart(row, false); g.player.heartChanged() } })
                 }
             }
-            if (vdb != null) {
+            if (vdb != null || wiki.isNotEmpty()) {
                 Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    vdb.songId?.let { Pill("VocaDB ${T.vdbId(it)}", if (vdb.issue.isNotEmpty()) C39.Warn else C39.Miku, onClick = { info = true }) }
-                    if (vdb.songType.isNotEmpty() && vdb.songType != "Original song") Pill(vdb.songType, C39.Gold)
-                    vdb.tags.take(4).forEach { t -> Pill(t.name, C39.TagColors[t.category] ?: C39.Text2, onClick = { Nav.playerOpen = false; Nav.go(Route.Tag(t.id)) }) }
+                    wiki.forEach { w ->                         // odnośniki do wiki piosenek (Love Live, BanG Dream…)
+                        val p = w.page ?: w.albumPage
+                        if (p != null) Pill(w.source.name, Color(android.graphics.Color.parseColor(w.source.color)), onClick = { uri.openUri(w.source.url(p)) })
+                    }
+                    if (vdb != null) vdb.songId?.let { Pill("VocaDB ${T.vdbId(it)}", if (vdb.issue.isNotEmpty()) C39.Warn else C39.Miku, onClick = { info = true }) }
+                    if (vdb != null && vdb.songType.isNotEmpty() && vdb.songType != "Original song") Pill(vdb.songType, C39.Gold)
+                    vdb?.tags.orEmpty().take(4).forEach { t -> Pill(t.name, C39.TagColors[t.category] ?: C39.Text2, onClick = { Nav.playerOpen = false; Nav.go(Route.Tag(t.id)) }) }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -239,7 +245,7 @@ fun PlayerScreen() {
             Spacer(Modifier.weight(0.4f))
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 SmallIconButton(Icons39.PlaylistAdd, "Dodaj do playlisty", tint = C39.Text2) { addPl = true }
-                SmallIconButton(Icons39.Info, "Informacje (VocaDB)", tint = C39.Text2) { info = true }
+                SmallIconButton(Icons39.Info, "Informacje o utworze", tint = C39.Text2) { info = true }
                 val local = row?.let { g.files.isLocal(it.id) } ?: false
                 Icon(if (local) Icons39.DownloadDone else Icons39.Cloud, if (local) "Na telefonie" else "Strumień z NAS",
                     Modifier.padding(9.dp).size(22.dp), tint = if (local) accent else C39.Text3)

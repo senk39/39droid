@@ -56,6 +56,10 @@ Kolejność źródła przy odtwarzaniu: plik pobrany → kopia na karcie → NAS
 * **VocaDB** (tylko do odczytu, bez internetu): ID utworu i albumu, typ (Original/Cover/Remix…), tytuły japoński,
   romaji i angielski, artyści z rolami, tagi z kategoriami, oznaczenie niezgodności. Wyszukiwarka znajduje utwory
   także po nazwach z VocaDB i tagach. Widok **Tagi (VocaDB)** i **Ulubione** (gwiazdki z 39player).
+* **Wiki piosenek** (z 39player): odnośniki utworów do Love Live wiki, BanG Dream! Wiki, Project SEKAI Wiki,
+  D4DJ wiki i project-imas.wiki (im@s – także strona albumu) w menu utworu, pigułki w odtwarzaczu i sekcja
+  w „Informacjach o utworze” z danymi strony zapisanymi na PC (infobox, opis, tekst piosenki). W kategoriach bez
+  VocaDB (Anime, Gry, Muzyka azjatycka, Touhou – lista z ustawień 39player) lista utworów nie pokazuje oznaczeń VocaDB.
 * **Serduszka** ♥ / ♥♥ jak w 39player (także przycisk ♥ w powiadomieniu). Na liście **Do odsłuchania** serduszko jest
   oznaczeniem, a „Przesłuchane” zaznacza się samo po 51% faktycznego słuchania; zatwierdzasz na PC.
 * Licznik odtworzeń po wysłuchaniu 50% (jak w 39player), Ostatnio dodane / odtwarzane, Ostatnio zatwierdzone.

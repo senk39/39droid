@@ -55,3 +55,9 @@ CREATE TABLE franchise_item(franchise_id INTEGER NOT NULL, pos INTEGER NOT NULL,
 CREATE TABLE star(kind TEXT NOT NULL, pos INTEGER NOT NULL, ident TEXT NOT NULL, name TEXT,
     PRIMARY KEY(kind, pos)) WITHOUT ROWID;
 CREATE TABLE applied(device TEXT PRIMARY KEY, seq INTEGER NOT NULL, ts REAL);
+CREATE TABLE wiki_source(id TEXT PRIMARY KEY, pos INTEGER NOT NULL, name TEXT NOT NULL, site TEXT NOT NULL,
+    prefix TEXT NOT NULL, franchise TEXT, manual_only INTEGER NOT NULL DEFAULT 0, color TEXT);
+CREATE TABLE wiki_link(track_id INTEGER NOT NULL, src TEXT NOT NULL, page TEXT, kind TEXT, album_page TEXT,
+    PRIMARY KEY(track_id, src)) WITHOUT ROWID;
+CREATE TABLE wiki_page(src TEXT NOT NULL, page TEXT NOT NULL, data TEXT NOT NULL, fetched REAL,
+    PRIMARY KEY(src, page)) WITHOUT ROWID;

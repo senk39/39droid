@@ -468,6 +468,13 @@ class Library(
     fun tagTracks(id: Long): List<TrackRow> = withSnap { s -> s.tracksByIds(s.tagTrackIds(id)) } ?: emptyList()
     fun vdb(trackId: Int): VdbInfo? = withSnap { it.vdb(trackId) }
     fun vdbNone(trackId: Int): Boolean = withSnap { trackId in it.vdbNone } ?: false
+
+    // ---------------------------------------------------------------- wiki piosenek, kategorie bez VocaDB
+    fun wikiLinks(trackId: Int): List<WikiLink> = withSnap { it.wikiLinks(trackId) } ?: emptyList()
+    fun wikiPage(src: String, page: String): WikiPage? = withSnap { it.wikiPage(src, page) }
+
+    /** Węzeł w kategorii bez VocaDB (jak w 39player: listy bez kolumn VocaDB). */
+    fun noVdbPath(path: String): Boolean = withSnap { s -> path.substringBefore(s.sep) in s.noVdbRoots } ?: false
     fun stars(): List<Star> = withSnap { it.stars } ?: emptyList()
     fun nodesOfTrack(trackId: Int): List<NodeRow> = withSnap { it.nodesOfTrack(trackId) } ?: emptyList()
     fun commits() = withSnap { it.recentCommits() } ?: emptyList()

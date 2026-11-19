@@ -205,6 +205,37 @@ class Sync39Test(unittest.TestCase):
         con.close()
         self.assertEqual(snapshot.fingerprint(phone), snapshot.fingerprint(c))
 
+    def test_wiki_links_and_no_vdb(self):
+        """Odnośniki do wiki (ręczny utworu, strona albumu im@s, zapisane dane strony) i kategorie bez VocaDB."""
+        from player39 import llwiki as W
+        from sync39 import snapshot
+        lib = self.lib
+        ll = next((i for i, t in lib.tracks.items() if W.LL.is_track(t)), None)
+        im = next((i for i, t in lib.tracks.items() if W.IM.is_track(t)), None)
+        if ll is None or im is None:
+            self.skipTest("brak utworów Love Live / im@s w bibliotece")
+        W.links(lib, W.LL).set([ll], "Yume no Tobira")
+        W.links(lib, W.LL).save_page_data("Yume no Tobira", {"title": "Yume no Tobira", "ja": "ユメノトビラ"})
+        W.links(lib, W.IM).set_album([lib.tracks[im]], "Shiny Smile")
+        out = os.path.join(self.tmp, "wiki.db")
+        snapshot.build(lib, self.cfg, out, {}, log=lambda *a: None)
+        con = sqlite3.connect(out)
+        try:
+            self.assertEqual(con.execute("SELECT page, kind FROM wiki_link WHERE track_id=? AND src='ll'",
+                                         (ll,)).fetchone(), ("Yume no Tobira", "manual"))
+            self.assertEqual(con.execute("SELECT album_page FROM wiki_link WHERE track_id=? AND src='im'",
+                                         (im,)).fetchone(), ("Shiny Smile",))
+            data = con.execute("SELECT data FROM wiki_page WHERE src='ll' AND page='Yume no Tobira'").fetchone()
+            self.assertEqual(json.loads(data[0])["ja"], "ユメノトビラ")
+            srcs = [r[0] for r in con.execute("SELECT id FROM wiki_source ORDER BY pos")]
+            self.assertEqual(srcs, [s.id for s in W.SOURCES])
+            no_vdb = json.loads(con.execute("SELECT value FROM info WHERE key='no_vdb'").fetchone()[0])
+            self.assertIn("anime", no_vdb)
+        finally:
+            con.close()
+            W.links(lib, W.LL).set([ll], None)
+            W.links(lib, W.IM).set_album([lib.tracks[im]], None)
+
     def test_gzip_roundtrip_and_art_key(self):
         from sync39 import snapshot
         a = snapshot.art_key("vocaloid/! single", "Plot 0")

@@ -2,7 +2,8 @@
 
 Telefon nie liczy kategorii sam – dostaje gotowe drzewo (foldery, vocaP, Wokaliści, Silniki syntezy), skład playlist,
 serduszka, listę „Do odsłuchania” z oznaczeniami, dane VocaDB (ID, nazwy, typ, tagi, artyści z rolami), indeks filtrów
-Love Live!, półkę Serie (Anime) i gwiazdki. Ścieżki plików są względne wobec folderu muzyki (separator „/”, NFC),
+Love Live!, półkę Serie (Anime), gwiazdki oraz odnośniki do wiki piosenek (Love Live, BanG Dream!, Project Sekai,
+D4DJ, im@s – liczone przez 39player.llwiki, z zapisanymi danymi stron). Ścieżki plików są względne wobec folderu muzyki (separator „/”, NFC),
 więc ten sam plik znajdzie się na karcie SD, w pamięci podręcznej telefonu i na NAS."""
 from __future__ import annotations
 
@@ -73,6 +74,12 @@ CREATE TABLE franchise_item(franchise_id INTEGER NOT NULL, pos INTEGER NOT NULL,
 CREATE TABLE star(kind TEXT NOT NULL, pos INTEGER NOT NULL, ident TEXT NOT NULL, name TEXT,
     PRIMARY KEY(kind, pos)) WITHOUT ROWID;
 CREATE TABLE applied(device TEXT PRIMARY KEY, seq INTEGER NOT NULL, ts REAL);
+CREATE TABLE wiki_source(id TEXT PRIMARY KEY, pos INTEGER NOT NULL, name TEXT NOT NULL, site TEXT NOT NULL,
+    prefix TEXT NOT NULL, franchise TEXT, manual_only INTEGER NOT NULL DEFAULT 0, color TEXT);
+CREATE TABLE wiki_link(track_id INTEGER NOT NULL, src TEXT NOT NULL, page TEXT, kind TEXT, album_page TEXT,
+    PRIMARY KEY(track_id, src)) WITHOUT ROWID;
+CREATE TABLE wiki_page(src TEXT NOT NULL, page TEXT NOT NULL, data TEXT NOT NULL, fetched REAL,
+    PRIMARY KEY(src, page)) WITHOUT ROWID;
 """
 
 SEP = "\x1f"          # separator kluczy w ścieżce węzła (klucze same mogą zawierać „/”)
@@ -347,6 +354,18 @@ def build(lib, cfg: dict, out_path: str, applied: dict | None = None, log=print)
             srows.append((kind, pos, str(ident), e.get("name") or ""))
     con.executemany("INSERT INTO star VALUES(?,?,?,?)", srows)
 
+    # ------------------------------------------------------------------ wiki piosenek (Love Live, BanG Dream…)
+    try:
+        from player39 import llwiki as W
+        con.executemany("INSERT INTO wiki_source VALUES(?,?,?,?,?,?,?,?)", W.export_sources())
+        wl = W.export_links(lib, sorted(exported))
+        con.executemany("INSERT INTO wiki_link VALUES(?,?,?,?,?)", wl)
+        wp = W.export_pages(lib)
+        con.executemany("INSERT INTO wiki_page VALUES(?,?,?,?)", wp)
+        log(f"  wiki: {len(wl)} odnośników, {len(wp)} zapisanych stron")
+    except Exception as e:                                     # noqa: BLE001 – starszy 39player bez llwiki
+        log(f"  (odnośniki wiki pominięte: {e})")
+
     # ------------------------------------------------------------------ potwierdzenia dziennika telefonu
     for dev, st in (applied or {}).items():
         con.execute("INSERT INTO applied VALUES(?,?,?)", (dev, int(st.get("seq", 0)), st.get("ts")))
@@ -358,6 +377,9 @@ def build(lib, cfg: dict, out_path: str, applied: dict | None = None, log=print)
         "roots": json.dumps([r for _k, r in rel.roots], ensure_ascii=False),
         "vocap_name": cfg.get("nazwa_vocap", "vocaP"), "vocal_name": cfg.get("nazwa_wokalisci", "Wokaliści"),
         "vdb_style": cfg.get("styl_vocadb", "fill"), "recent_days": cfg.get("ostatnio_dodane_dni", 60),
+        # kategorie bez VocaDB (39player: kolumny VocaDB ukryte) – klucze węzłów najwyższego poziomu
+        "no_vdb": json.dumps([str(x).casefold() for x in cfg.get(
+            "kategorie_bez_vocadb", ["Anime", "Gry", "Muzyka azjatycka", "Touhou"])], ensure_ascii=False),
         "sep": SEP,
     }
     con.executemany("INSERT OR REPLACE INTO info VALUES(?,?)", [(k, str(v)) for k, v in info.items()])

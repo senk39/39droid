@@ -118,7 +118,7 @@ private fun TrackNode(node: NodeRow) {
     val pinned = g.offline.isNodePinned(node.path)
     TrackListScreen(
         rows = filtered,
-        ctx = ListCtx(node.name),
+        ctx = ListCtx(node.name, noVdb = lib.noVdbPath(node.path)),
         title = node.name,
         subtitle = filtered?.let {
             val base = "${T.tracks(it.size)} · ${T.totalTime(it.sumOf { r -> r.duration })}"
@@ -369,7 +369,7 @@ fun MultiScreen(label: String, paths: List<String>) {
     val nodes = remember(paths, snapV) { paths.mapNotNull { lib.nodeByPath(it) } }
     Column(Modifier.fillMaxSize()) {
         TopBar(label)
-        TrackListScreen(rows, ListCtx(label), label, header = {
+        TrackListScreen(rows, ListCtx(label, noVdb = paths.isNotEmpty() && paths.all { lib.noVdbPath(it) }), label, header = {
             item { SectionTitle("Kategorie") }
             items(nodes, key = { it.id }) { n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
             item { SectionTitle("Utwory") }

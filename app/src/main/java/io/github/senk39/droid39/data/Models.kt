@@ -156,3 +156,24 @@ data class FolderEntry(val name: String, val path: String, val count: Int)
 data class FolderListing(val folders: List<FolderEntry>, val tracks: List<TrackRow>) {
     val total: Int get() = folders.sumOf { it.count } + tracks.size
 }
+
+/** Wiki piosenek z 39player (Love Live, BanG Dream!, Project Sekai, D4DJ, im@s) – źródło z migawki. */
+data class WikiSource(
+    val id: String, val name: String, val site: String, val prefix: String, val franchise: String,
+    val manualOnly: Boolean, val color: String,
+) {
+    fun url(page: String): String = site + prefix + android.net.Uri.encode(page.replace(' ', '_'), "!$&'()*+,;=:@/~")
+}
+
+/** Odnośnik utworu: strona utworu (ręcznie albo dopasowana automatycznie w 39player) i strona albumu (im@s). */
+data class WikiLink(val source: WikiSource, val page: String?, val kind: String?, val albumPage: String?)
+
+data class WikiLyric(val label: String, val value: String)
+
+/** Dane strony wiki zapisane w 39player (Informacje o utworze): infobox, opis, wydania, tekst. */
+data class WikiPage(
+    val title: String, val url: String, val ja: String, val meaning: String,
+    val info: List<Pair<String, String>>, val intro: List<String>, val description: String,
+    val tracks: List<Pair<String, String>>, val trivia: List<String>, val lives: List<String>,
+    val lyrics: List<WikiLyric>,
+)

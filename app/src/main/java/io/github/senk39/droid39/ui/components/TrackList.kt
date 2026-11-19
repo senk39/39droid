@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +62,7 @@ import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
 import io.github.senk39.droid39.data.SortMode
 import io.github.senk39.droid39.data.TrackRow
+import io.github.senk39.droid39.data.WikiLink
 import io.github.senk39.droid39.sync.NasState
 import io.github.senk39.droid39.ui.Icons39
 import io.github.senk39.droid39.ui.Nav
@@ -72,7 +74,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Kontekst listy: etykieta źródła i czy to widok „Do odsłuchania” (serduszko = oznaczenie). */
-data class ListCtx(val label: String, val unlistenedView: Boolean = false, val playlistRel: String? = null)
+/** `noVdb` – lista w kategorii bez VocaDB (Anime, Gry…): bez oznaczeń VocaDB, jak kolumny w 39player. */
+data class ListCtx(
+    val label: String, val unlistenedView: Boolean = false, val playlistRel: String? = null, val noVdb: Boolean = false,
+)
 
 fun sortRows(rows: List<TrackRow>, mode: SortMode, desc: Boolean): List<TrackRow> {
     val sorted = when (mode) {
@@ -271,11 +276,13 @@ fun TrackRowView(r: TrackRow, ctx: ListCtx, onPlay: () -> Unit) {
                     color = if (playing) accent else if (unavailable) C39.Text3 else C39.Text,
                     style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.width(5.dp))
-                VdbDot(r.songId != null, r.vdbIssue)
-                val st = r.songType
-                if (!st.isNullOrEmpty() && st != "Original song" && st != "Unspecified") {
-                    Spacer(Modifier.width(4.dp)); Pill(st, C39.Gold)
+                if (!ctx.noVdb) {
+                    Spacer(Modifier.width(5.dp))
+                    VdbDot(r.songId != null, r.vdbIssue)
+                    val st = r.songType
+                    if (!st.isNullOrEmpty() && st != "Original song" && st != "Unspecified") {
+                        Spacer(Modifier.width(4.dp)); Pill(st, C39.Gold)
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -368,7 +375,16 @@ fun TrackActionsSheet(rows: List<TrackRow>, ctx: ListCtx, onDismiss: () -> Unit)
                 }
             }
             if (rows.size == 1) {
-                SheetItem(Icons39.Info, "Informacje o utworze (VocaDB)") { info = true }
+                SheetItem(Icons39.Info, "Informacje o utworze") { info = true }
+                val uri = LocalUriHandler.current
+                rememberLoad("wiki", r.id) { lib.wikiLinks(r.id) }?.forEach { w ->
+                    w.page?.let { p ->
+                        SheetItem(Icons39.Link, "Otwórz na ${w.source.name}: $p") { uri.openUri(w.source.url(p)); onDismiss() }
+                    }
+                    w.albumPage?.let { p ->
+                        SheetItem(Icons39.Link, "Album na ${w.source.name}: $p") { uri.openUri(w.source.url(p)); onDismiss() }
+                    }
+                }
                 val dir = r.rel.substringBeforeLast('/', "")
                 SheetItem(Icons39.Folder, "Pokaż w folderze: " + dir.ifEmpty { "folder główny" }.replace("/", " › ")) {
                     Nav.playerOpen = false; Nav.go(Route.Folder(dir)); onDismiss()
@@ -390,7 +406,7 @@ fun TrackActionsSheet(rows: List<TrackRow>, ctx: ListCtx, onDismiss: () -> Unit)
         }
     }
     if (addToPl) AddToPlaylistDialog(rows) { addToPl = false; onDismiss() }
-    if (info) TrackInfoSheet(r) { info = false; onDismiss() }
+    if (info) TrackInfoSheet(r, noVdb = ctx.noVdb) { info = false; onDismiss() }
 }
 
 @Composable
@@ -443,10 +459,11 @@ fun AddToPlaylistDialog(rows: List<TrackRow>, onDone: () -> Unit) {
 }
 
 @Composable
-fun TrackInfoSheet(r: TrackRow, onDismiss: () -> Unit) {
+fun TrackInfoSheet(r: TrackRow, noVdb: Boolean = false, onDismiss: () -> Unit) {
     val g = App.graph
     val lib = g.library
     val vdb = rememberLoad(r.id) { lib.vdb(r.id) }
+    val wiki = rememberLoad("wiki", r.id) { lib.wikiLinks(r.id) } ?: emptyList()
     val none = rememberLoad("none", r.id) { lib.vdbNone(r.id) } ?: false
     val local = g.files.find(r.rel)
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C39.Surface) {
@@ -470,8 +487,10 @@ fun TrackInfoSheet(r: TrackRow, onDismiss: () -> Unit) {
             if (!r.albumArtist.isNullOrEmpty()) InfoLine("Wykonawca albumu", r.albumArtist)
             InfoLine("Odtworzenia", lib.playCount(r).toString())
             InfoLine("Na telefonie", when (local?.source) { "dl" -> "pobrany"; "sd" -> "kopia na karcie"; else -> "nie (strumień z NAS)" })
-            InfoSection("VocaDB")
+            wiki.forEach { WikiSection(it) }
+            if (!noVdb || vdb != null) InfoSection("VocaDB")
             when {
+                noVdb && vdb == null -> Unit                   // kategoria bez VocaDB (Anime, Gry…)
                 vdb == null && none -> Text("Potwierdzony brak wpisu w VocaDB", color = C39.Text2)
                 vdb == null -> Text("Utwór nie jest podpięty do VocaDB (podpinanie – w 39player na PC).", color = C39.Text2)
                 else -> {
@@ -505,6 +524,50 @@ fun TrackInfoSheet(r: TrackRow, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Sekcja wiki piosenek: odnośniki do stron utworu i albumu oraz dane strony zapisane w 39player. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WikiSection(w: WikiLink) {
+    val lib = App.graph.library
+    val uri = LocalUriHandler.current
+    val page = rememberLoad("wp", w.source.id, w.page) { w.page?.let { lib.wikiPage(w.source.id, it) } }
+    InfoSection(w.source.name)
+    w.page?.let { p -> InfoLink("Strona utworu", p) { uri.openUri(w.source.url(p)) } }
+    w.albumPage?.let { p -> InfoLink("Strona albumu", p) { uri.openUri(w.source.url(p)) } }
+    if (w.kind == "auto") Text("dopasowano automatycznie po tytule (39player)", color = C39.Text3, fontSize = 12.sp)
+    if (page == null) {
+        if (w.page != null && !w.source.manualOnly) Text(
+            "Dane strony pojawią się po otwarciu Informacji o utworze w 39player na PC.", color = C39.Text3, fontSize = 12.sp,
+        )
+        return
+    }
+    if (page.ja.isNotEmpty()) InfoLine("Tytuł (japoński)", page.ja)
+    if (page.meaning.isNotEmpty()) InfoLine(if (w.source.id == "ll") "Znaczenie" else "Tytuł (angielski)", page.meaning)
+    page.info.forEach { (k, v) -> InfoLine(k, v) }
+    page.intro.forEach { Text(it, Modifier.padding(top = 6.dp), color = C39.Text2, fontSize = 13.sp) }
+    if (page.description.isNotEmpty()) Text(page.description, Modifier.padding(top = 6.dp), color = C39.Text2, fontSize = 13.sp)
+    if (page.lyrics.isNotEmpty()) {
+        var which by rememberSaveable(w.source.id, w.page) { mutableStateOf(0) }
+        Spacer(Modifier.height(10.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            page.lyrics.forEachIndexed { i, l ->
+                Pill(l.label.ifEmpty { "tekst" }, if (i == which) LocalAccent.current else C39.Text2, onClick = { which = i })
+            }
+        }
+        Text(page.lyrics[which.coerceIn(0, page.lyrics.lastIndex)].value, Modifier.padding(top = 8.dp), fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun InfoLink(label: String, value: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(130.dp), color = C39.Text3, fontSize = 13.sp)
+        Icon(Icons39.Link, null, Modifier.size(15.dp), tint = LocalAccent.current)
+        Spacer(Modifier.width(4.dp))
+        Text(value, color = LocalAccent.current, fontSize = 13.sp)
     }
 }
 
