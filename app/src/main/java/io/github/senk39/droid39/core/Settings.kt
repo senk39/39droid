@@ -126,6 +126,8 @@ class Settings(context: Context) {
     /** Motyw: „dark”, „light” albo „system” (jak w ustawieniach telefonu). */
     var theme by str("theme", "dark")
     var resumeOnStart by bool("resume_on_start", false)
+    /** Przytrzymanie okładki utworu zaczyna zaznaczanie (a reszty wiersza – menu utworu); domyślnie odwrotnie. */
+    var coverLongPressSelects by bool("cover_long_press_selects", false)
     /** Po zakończeniu kolejki: "context" (dalej poprzednia lista), "unlistened", "repeat", "stop". */
     var queueEndAction by str("queue_end_action", "context")
 

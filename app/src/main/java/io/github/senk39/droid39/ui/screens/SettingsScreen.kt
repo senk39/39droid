@@ -101,6 +101,9 @@ fun SettingsScreen(section: String?) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val changes by s.changes.collectAsState()
+    // odczyt tutaj: każda zmiana ustawień odświeża cały ekran (inaczej przełączniki w sekcjach, które same nie
+    // czytają `changes`, zostawały w starym położeniu, choć wartość już się zmieniła)
+    remember(changes) { changes }
     val sync by g.sync.status.collectAsState()
     val filesV by g.files.version.collectAsState()
     val accent = LocalAccent.current
@@ -423,6 +426,9 @@ fun SettingsScreen(section: String?) {
             }
             Spacer(Modifier.height(8.dp))
             Toggle("Kolor akcentu z okładki", "Jak w PowerAmp – kolor przycisków i pasków wg okładki odtwarzanego utworu", s.accentFromArt) { s.accentFromArt = it }
+            Toggle("Przytrzymanie okładki zaznacza utwory",
+                if (s.coverLongPressSelects) "Okładka – zaznaczanie, reszta wiersza – menu utworu"
+                else "Domyślnie: okładka – menu utworu, reszta wiersza – zaznaczanie", s.coverLongPressSelects) { s.coverLongPressSelects = it }
             WidgetsBlock()
             Hint("Przeciągnij palcem w prawo (od lewej połowy ekranu), aby wrócić do poprzedniego ekranu.")
           }

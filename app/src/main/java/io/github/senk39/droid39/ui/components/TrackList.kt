@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -127,6 +128,8 @@ fun TrackListScreen(
     val player = App.graph.player
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val selection = remember(title) { TrackSelection() }
+    androidx.activity.compose.BackHandler(enabled = selection.active) { selection.clear() }
     fun playAll(shuffle: Boolean) {
         val s = sorted
         if (!s.isNullOrEmpty()) player.play(s, 0, shuffle, ctx.label)
@@ -135,7 +138,8 @@ fun TrackListScreen(
             if (all.isNotEmpty()) player.play(all, 0, shuffle, ctx.label)
         }
     }
-    ScrollbarBox(state) { LazyColumn(state = state, contentPadding = PaddingValues(bottom = 96.dp)) {
+    Box(Modifier.fillMaxSize()) {
+    ScrollbarBox(state) { LazyColumn(state = state, contentPadding = PaddingValues(bottom = if (selection.active) 190.dp else 96.dp)) {
         item(key = "__head") {
             ListHeader(
                 title = title,
@@ -162,10 +166,13 @@ fun TrackListScreen(
                 EmptyState(emptyText.ifEmpty { "Brak utworów" }, if (filter.isNotEmpty()) "Nic nie pasuje do filtra." else "")
             }
             else -> itemsIndexed(sorted, key = { i, r -> "${r.id}#$i" }) { i, r ->
-                TrackRowView(r, ctx, onPlay = { player.play(sorted, i, false, ctx.label) })
+                TrackRowView(r, ctx, selection, onPlay = { player.play(sorted, i, false, ctx.label) })
             }
         }
     } }
+    val s = sorted
+    if (selection.active && s != null) SelectionBar(selection, s, ctx, Modifier.align(Alignment.BottomCenter))
+    }
 }
 
 @Composable
@@ -242,7 +249,12 @@ fun ActionChip(icon: ImageVector, label: String, color: Color, filled: Boolean =
 }
 
 @Composable
-fun TrackRowView(r: TrackRow, ctx: ListCtx, onPlay: () -> Unit) {
+/**
+ * Wiersz utworu. Dotknięcie – odtwarzanie (w trybie zaznaczania – zaznacza / odznacza). Przytrzymanie: okładki – menu
+ * utworu, reszty wiersza – zaczyna zaznaczanie ([selection]); ustawienie „Przytrzymanie okładki zaznacza utwory”
+ * zamienia te strefy. Bez [selection] (listy bez zaznaczania) przytrzymanie w dowolnym miejscu otwiera menu.
+ */
+fun TrackRowView(r: TrackRow, ctx: ListCtx, selection: TrackSelection? = null, onPlay: () -> Unit) {
     val g = App.graph
     val lib = g.library
     val overlay by lib.overlayVersion.collectAsState()
@@ -255,16 +267,23 @@ fun TrackRowView(r: TrackRow, ctx: ListCtx, onPlay: () -> Unit) {
     val playing = now.id == r.id
     var menu by remember { mutableStateOf(false) }
     val accent = LocalAccent.current
+    val selected = selection?.isSelected(r.id) == true
+    val tap = { if (selection?.active == true) selection.toggle(r.id) else onPlay() }
+    val select = { if (selection != null) selection.toggle(r.id) else menu = true }
+    val openMenu = { menu = true }
+    val coverSelects = g.settings.coverLongPressSelects
     Row(
         Modifier.fillMaxWidth()
-            .background(if (playing) accent.copy(alpha = 0.10f) else Color.Transparent)
-            .combinedClickable(onClick = onPlay, onLongClick = { menu = true })
+            .background(if (selected) accent.copy(alpha = 0.22f) else if (playing) accent.copy(alpha = 0.10f) else Color.Transparent)
+            .combinedClickable(onClick = tap, onLongClick = if (coverSelects) openMenu else select)
             .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box {
+        Box(Modifier.clip(RoundedCornerShape(6.dp)).combinedClickable(onClick = tap, onLongClick = if (coverSelects) select else openMenu)) {
             Art(r.artKey, r.rel, 48.dp)
-            if (playing) Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x88000000)), contentAlignment = Alignment.Center) {
+            if (selected) Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(accent.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
+                Icon(Icons39.Check, "Zaznaczony", Modifier.size(26.dp), tint = C39.OnAccent)
+            } else if (playing) Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x88000000)), contentAlignment = Alignment.Center) {
                 Icon(if (now.playing) Icons39.Equalizer else Icons39.Pause, null, Modifier.size(22.dp), tint = accent)
             }
         }

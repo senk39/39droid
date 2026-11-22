@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pliki muzyki do udostępnienia: pobrane (dane aplikacji, także na karcie) i kopia biblioteki na karcie pamięci -->
+<paths>
+    <root-path name="storage" path="storage/" />
+    <external-files-path name="downloads" path="." />
+    <files-path name="internal" path="." />
+</paths>
