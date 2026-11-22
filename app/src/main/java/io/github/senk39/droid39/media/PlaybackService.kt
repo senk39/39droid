@@ -617,6 +617,7 @@ class PlaybackService : MediaLibraryService() {
                         player.setMediaItems(items, 0, 0)
                         player.prepare()
                         player.play()
+                        g.player.source.value = "Do odsłuchania"           // nagłówek odtwarzacza i kolejki
                         note("Zakończono odtwarzanie kolejki – teraz „Do odsłuchania”")
                     }
                 }
