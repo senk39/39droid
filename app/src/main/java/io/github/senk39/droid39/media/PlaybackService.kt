@@ -69,6 +69,9 @@ class PlaybackService : MediaLibraryService() {
     private val tracker = ListenTracker()
     private var errorsInRow = 0
     private var lastSave = 0L
+    private lateinit var queue: UserQueue
+    /** Koniec kolejki już obsłużony (zatrzymanie na końcu utworu) – bez drugiego komunikatu przy zmianie utworu. */
+    private var queueEndHandled = false
 
     override fun onCreate() {
         super.onCreate()
@@ -82,6 +85,9 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         scrobbler = ScrobbleBroadcaster(this, g.settings)
+        queue = UserQueue(player)
+        queue.pauseAtQueueEnd = g.settings.queueEndAction != "context"
+        scope.launch { g.settings.changes.collect { queue.pauseAtQueueEnd = g.settings.queueEndAction != "context" } }
         player.addListener(listener)
         val intent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN_PLAYER, true),
@@ -179,6 +185,8 @@ class PlaybackService : MediaLibraryService() {
             val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(CMD_HEART, Bundle.EMPTY))
                 .add(SessionCommand(CMD_HEART_REFRESH, Bundle.EMPTY))
+                .add(SessionCommand(CMD_QUEUE_ADD, Bundle.EMPTY))
+                .add(SessionCommand(CMD_QUEUE_CLEAR, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(cmds)
@@ -198,6 +206,20 @@ class PlaybackService : MediaLibraryService() {
                         handler.post { session.setMediaButtonPreferences(listOf(heartButton(level))) }
                     }
                 }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            if (customCommand.customAction == CMD_QUEUE_ADD) {
+                val ids = args.getIntArray("ids")?.toList().orEmpty()
+                val next = args.getBoolean("next")
+                val remember = args.getBoolean("remember", true)
+                io.execute {
+                    val items = resolve(ids.map { MediaItem.Builder().setMediaId(it.toString()).build() })
+                    handler.post { queue.add(items, next, remember) }
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            if (customCommand.customAction == CMD_QUEUE_CLEAR) {
+                queue.clear()
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             if (customCommand.customAction == CMD_HEART_REFRESH) {
@@ -230,7 +252,7 @@ class PlaybackService : MediaLibraryService() {
             val ids = g.local.loadQueue()
             val idx = g.local.get("queue_index")?.toIntOrNull() ?: 0
             val pos = g.local.get("queue_pos")?.toLongOrNull() ?: 0L
-            val items = resolve(ids.map { MediaItem.Builder().setMediaId(it.toString()).build() })
+            val items = withMarks(resolve(ids.map { MediaItem.Builder().setMediaId(it.toString()).build() }), ids.size)
             MediaSession.MediaItemsWithStartPosition(items, idx.coerceIn(0, maxOf(0, items.size - 1)), pos)
         })
 
@@ -317,6 +339,9 @@ class PlaybackService : MediaLibraryService() {
 
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val finished = queue.onTransition()
+            if (finished && !queueEndHandled) queueFinishedOnTransition()
+            queueEndHandled = false
             tracker.finish()
             val id = mediaItem?.mediaId?.toIntOrNull()
             currentId = id
@@ -344,18 +369,26 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // ostatni utwór kolejki dobiegł końca, a „po zakończeniu kolejki” nie jest „wróć do poprzedniej listy”
+            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && queue.isLastQueued()) {
+                queueEnded()
+            }
             updateLivePlaying()
             widgets()
             publishSoon()
         }
 
-        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = publishSoon()
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            queue.onShuffleChanged(shuffleModeEnabled)
+            publishSoon()
+        }
 
         override fun onRepeatModeChanged(repeatMode: Int) = publishSoon()
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             updateLivePlaying()
             if (playbackState == Player.STATE_ENDED) widgets()
+            if (playbackState == Player.STATE_ENDED && queue.isLastQueued() && !queueEndHandled) queueEnded()
             if (playbackState == Player.STATE_ENDED) {
                 tracker.finish()
                 scrobbler.complete(player.currentMediaItem)
@@ -388,6 +421,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
             if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                queue.update()
                 saveQueueSoon()
                 publishSoon()
             }
@@ -445,7 +479,11 @@ class PlaybackService : MediaLibraryService() {
         queueJob = scope.launch {
             delay(1500)
             val ids = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).mediaId.toIntOrNull() }
-            withContext(Dispatchers.IO) { g.local.saveQueue(ids) }
+            val marks = queue.markedIndices().joinToString(",")
+            withContext(Dispatchers.IO) {
+                g.local.saveQueue(ids)
+                g.local.put("queue_marks", marks)
+            }
             saveState()
         }
     }
@@ -471,7 +509,7 @@ class PlaybackService : MediaLibraryService() {
         if (player.mediaItemCount > 0 || !g.library.ready) return
         val (items, idx, pos) = withContext(Dispatchers.IO) {
             val ids = g.local.loadQueue()
-            Triple(resolve(ids.map { MediaItem.Builder().setMediaId(it.toString()).build() }),
+            Triple(withMarks(resolve(ids.map { MediaItem.Builder().setMediaId(it.toString()).build() }), ids.size),
                 g.local.get("queue_index")?.toIntOrNull() ?: 0, g.local.get("queue_pos")?.toLongOrNull() ?: 0L)
         }
         if (items.isNotEmpty() && player.mediaItemCount == 0) {
@@ -541,7 +579,66 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    // ---------------------------------------------------------------- kolejka użytkownika
+    /** Oznaczenia kolejki po wczytaniu zapisanej listy (gdy żaden utwór nie zniknął z biblioteki). */
+    private fun withMarks(items: MutableList<MediaItem>, savedCount: Int): MutableList<MediaItem> {
+        if (items.size != savedCount) return items
+        val marks = g.local.get("queue_marks").orEmpty().split(',').mapNotNull { it.toIntOrNull() }.toHashSet()
+        return items.mapIndexed { i, it -> if (i in marks) UserQueue.mark(it) else it }.toMutableList()
+    }
+
+    private fun note(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    /** Kolejka skończyła się przy zmianie utworu („wróć do poprzedniej listy” – lista gra dalej sama). */
+    private fun queueFinishedOnTransition() {
+        queue.forgetRound()
+        note(if (player.currentMediaItem != null) "Zakończono odtwarzanie kolejki – dalej poprzednia lista"
+        else "Zakończono odtwarzanie kolejki")
+    }
+
+    /** Ostatni utwór kolejki dobiegł końca: zatrzymanie, „Do odsłuchania” albo kolejka od nowa (ustawienie). */
+    private fun queueEnded() {
+        queueEndHandled = true
+        when (g.settings.queueEndAction) {
+            "repeat" -> if (queue.replay()) {
+                player.seekToNextMediaItem()
+                player.play()
+                note("Zakończono odtwarzanie kolejki – od nowa")
+            } else stopAfterQueue()
+            "unlistened" -> io.execute {
+                val items = g.library.unlistenedTracks().take(PlayerConnection.MAX_QUEUE).map(::item)
+                handler.post {
+                    queue.forgetRound()
+                    if (items.isEmpty()) {
+                        note("Zakończono odtwarzanie kolejki – lista „Do odsłuchania” jest pusta, dalej poprzednia lista")
+                        if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+                        player.play()
+                    } else {
+                        player.setMediaItems(items, 0, 0)
+                        player.prepare()
+                        player.play()
+                        note("Zakończono odtwarzanie kolejki – teraz „Do odsłuchania”")
+                    }
+                }
+            }
+            "context" -> {
+                queue.forgetRound()
+                note("Zakończono odtwarzanie kolejki")
+            }
+            else -> stopAfterQueue()
+        }
+    }
+
+    private fun stopAfterQueue() {
+        queue.forgetRound()
+        player.pause()
+        if (player.hasNextMediaItem()) player.seekToNextMediaItem()        // „Odtwórz” – dalej poprzednia lista
+        note("Zakończono odtwarzanie kolejki – zatrzymano")
+    }
+
     companion object {
+        const val CMD_QUEUE_ADD = "io.github.senk39.droid39.QUEUE_ADD"
+        const val CMD_QUEUE_CLEAR = "io.github.senk39.droid39.QUEUE_CLEAR"
         const val CMD_HEART = "io.github.senk39.droid39.HEART"
         const val CMD_HEART_REFRESH = "io.github.senk39.droid39.HEART_REFRESH"
         const val ROOT = "root"

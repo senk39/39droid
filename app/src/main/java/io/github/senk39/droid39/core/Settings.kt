@@ -126,6 +126,8 @@ class Settings(context: Context) {
     /** Motyw: „dark”, „light” albo „system” (jak w ustawieniach telefonu). */
     var theme by str("theme", "dark")
     var resumeOnStart by bool("resume_on_start", false)
+    /** Po zakończeniu kolejki: "context" (dalej poprzednia lista), "unlistened", "repeat", "stop". */
+    var queueEndAction by str("queue_end_action", "context")
 
     // ---------------------------------------------------------------- urządzenie i stan synchronizacji
     val deviceId: String

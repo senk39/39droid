@@ -35,6 +35,10 @@ data class PlayerUi(
     val shuffle: Boolean = false,
     val repeat: Int = Player.REPEAT_MODE_OFF,
     val error: String? = null,
+    /** Kolejka użytkownika do odegrania (po bieżącym, w kolejności odtwarzania): (indeks na liście, id utworu). */
+    val userQueue: List<Pair<Int, Int>> = emptyList(),
+    /** Bieżący utwór pochodzi z kolejki użytkownika. */
+    val currentQueued: Boolean = false,
 )
 
 /** Odtwarzany utwór (bez pozycji) – dla list, które nie muszą odświeżać się co pół sekundy. */
@@ -108,6 +112,11 @@ class PlayerConnection(private val context: Context) {
             queueCache = queue
         }
         val queue = queueCache
+        val key = Triple(queue.size, c.currentMediaItemIndex, c.shuffleModeEnabled)
+        if (timelineChanged || key != userQueueKey) {
+            userQueueKey = key
+            userQueueCache = queuedUpcoming(c).map { it to (c.getMediaItemAt(it).mediaId.toIntOrNull() ?: -1) }
+        }
         _now.value = NowPlaying(c.currentMediaItem?.mediaId?.toIntOrNull(), c.isPlaying)
         _ui.value = PlayerUi(
             connected = true,
@@ -122,6 +131,8 @@ class PlayerConnection(private val context: Context) {
             shuffle = c.shuffleModeEnabled,
             repeat = c.repeatMode,
             error = c.playerError?.message,
+            userQueue = userQueueCache,
+            currentQueued = UserQueue.isMarked(c.currentMediaItem),
         )
         poll?.cancel()
         if (c.isPlaying) poll = scope.launch {
@@ -135,6 +146,35 @@ class PlayerConnection(private val context: Context) {
     }
 
     private fun items(rows: List<TrackRow>) = rows.map { MediaItem.Builder().setMediaId(it.id.toString()).build() }
+
+    private var userQueueKey: Triple<Int, Int, Boolean>? = null
+    private var userQueueCache: List<Pair<Int, Int>> = emptyList()
+
+    /** Indeksy utworów kolejki użytkownika po bieżącym, w kolejności odtwarzania. */
+    private fun queuedUpcoming(c: MediaController): List<Int> {
+        val tl = c.currentTimeline
+        if (tl.isEmpty) return emptyList()
+        val sh = c.shuffleModeEnabled
+        val out = ArrayList<Int>()
+        var seen = 0
+        var i = tl.getNextWindowIndex(c.currentMediaItemIndex, Player.REPEAT_MODE_OFF, sh)
+        while (i != C.INDEX_UNSET && seen < tl.windowCount) {
+            if (UserQueue.isMarked(c.getMediaItemAt(i))) out += i
+            seen++
+            i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, sh)
+        }
+        return out
+    }
+
+    private fun queueCommand(ids: List<Int>, next: Boolean, remember: Boolean = true) = withController { c ->
+        if (ids.isEmpty()) return@withController
+        val args = android.os.Bundle().apply {
+            putIntArray("ids", ids.toIntArray())
+            putBoolean("next", next)
+            putBoolean("remember", remember)
+        }
+        c.sendCustomCommand(SessionCommand(PlaybackService.CMD_QUEUE_ADD, android.os.Bundle.EMPTY), args)
+    }
 
     /** Odtwarza listę od utworu `start`; `shuffle` – losowa kolejność (kolejka do 10 000 utworów). */
     fun play(rows: List<TrackRow>, start: Int = 0, shuffle: Boolean = false, label: String = "") {
@@ -155,10 +195,13 @@ class PlayerConnection(private val context: Context) {
         if (shuffle && start == 0) startIdx = list.indices.random()
         source.value = label
         withController { c ->
+            // kolejka użytkownika zostaje: po wybraniu nowej listy gra dalej przed nią
+            val kept = queuedUpcoming(c).mapNotNull { c.getMediaItemAt(it).mediaId.toIntOrNull() }
             c.shuffleModeEnabled = shuffle
             c.setMediaItems(items(list), startIdx, 0)
             c.prepare()
             c.play()
+            if (kept.isNotEmpty()) queueCommand(kept, next = false, remember = false)
         }
     }
 
@@ -179,17 +222,11 @@ class PlayerConnection(private val context: Context) {
         }
     }
 
-    fun playNext(rows: List<TrackRow>) = withController { c ->
-        if (c.mediaItemCount == 0) {
-            c.setMediaItems(items(rows)); c.prepare(); c.play()
-        } else c.addMediaItems(c.currentMediaItemIndex + 1, items(rows))
-    }
+    /** „Odtwórz następny” – do kolejki użytkownika, zaraz po bieżącym utworze. */
+    fun playNext(rows: List<TrackRow>) = queueCommand(rows.map { it.id }, next = true)
 
-    fun enqueue(rows: List<TrackRow>) = withController { c ->
-        if (c.mediaItemCount == 0) {
-            c.setMediaItems(items(rows)); c.prepare()
-        } else c.addMediaItems(items(rows))
-    }
+    /** „Dodaj do kolejki” – na koniec kolejki użytkownika (przed dalszą częścią wybranej listy). */
+    fun enqueue(rows: List<TrackRow>) = queueCommand(rows.map { it.id }, next = false)
 
     fun toggle() = withController { c ->
         if (c.isPlaying) c.pause() else {
@@ -218,7 +255,10 @@ class PlayerConnection(private val context: Context) {
     fun skipTo(index: Int) = withController { it.seekToDefaultPosition(index); it.play() }
     fun remove(index: Int) = withController { it.removeMediaItem(index) }
     fun move(from: Int, to: Int) = withController { it.moveMediaItem(from, to) }
-    fun clearQueue() = withController { it.clearMediaItems() }
+    /** Usuwa kolejkę użytkownika (wybrana lista gra dalej). */
+    fun clearQueue() = withController { c ->
+        c.sendCustomCommand(SessionCommand(PlaybackService.CMD_QUEUE_CLEAR, android.os.Bundle.EMPTY), android.os.Bundle.EMPTY)
+    }
     fun setShuffle(on: Boolean) = withController { it.shuffleModeEnabled = on }
 
     fun cycleRepeat() = withController { c ->

@@ -430,6 +430,19 @@ fun SettingsScreen(section: String?) {
           // ------------------------------------------------------------------ odtwarzanie
           if (section == "playback") {
             Toggle("Strumieniuj przez sieć komórkową", "Po wyłączeniu poza Wi-Fi grają tylko utwory na telefonie", s.allowMobileStreaming) { s.allowMobileStreaming = it }
+            Text("Po zakończeniu kolejki", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp), fontSize = 16.sp)
+            var qEnd by remember { mutableStateOf(s.queueEndAction) }
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("context" to "Wróć do poprzedniej listy", "unlistened" to "Graj „Do odsłuchania”",
+                    "repeat" to "Kolejka od nowa", "stop" to "Zatrzymaj").forEach { (v, label) ->
+                    Choice(label, qEnd == v) { qEnd = v; s.queueEndAction = v }
+                }
+            }
+            Hint("Kolejka to tylko utwory dodane opcją „Dodaj do kolejki” albo „Odtwórz następny”. Wybrany album, " +
+                "wykonawca czy lista grają po kolei lub losowo, ale do kolejki nie trafiają – po kolejce gra dalej " +
+                "wybrana lista albo to, co ustawisz tutaj.")
           }
 
           // ------------------------------------------------------------------ Simple Scrobbler
@@ -482,7 +495,9 @@ private fun SettingsHome() {
                 .joinToString(", ").ifEmpty { "Reguły pobierania na telefon" },
             "storage" to if (s.storage == "internal") "Pamięć wewnętrzna" else "Karta SD",
             "ui" to "Motyw: " + when (s.theme) { "light" -> "jasny"; "system" -> "jak w telefonie"; else -> "ciemny" },
-            "playback" to "Sieć komórkowa: " + if (s.allowMobileStreaming) "strumieniowanie włączone" else "tylko utwory na telefonie",
+            "playback" to "Po kolejce: " + when (s.queueEndAction) {
+                "unlistened" -> "„Do odsłuchania”"; "repeat" -> "od nowa"; "stop" -> "zatrzymaj"; else -> "poprzednia lista"
+            } + " · sieć komórkowa: " + if (s.allowMobileStreaming) "strumieniowanie" else "tylko telefon",
             "scrobbler" to (ScrobbleBroadcaster.installedVersion(ctx)?.let { "Simple Scrobbler $it" } ?: "Nie znaleziono Simple Scrobblera"),
         )
     }

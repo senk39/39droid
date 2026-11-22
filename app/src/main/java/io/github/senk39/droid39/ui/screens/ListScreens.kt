@@ -388,21 +388,54 @@ fun CommitsScreen() {
 }
 
 @Composable
+/**
+ * Kolejka użytkownika: tylko utwory dodane ręcznie („Dodaj do kolejki”, „Odtwórz następny”). Wybrana lista (album,
+ * kompozytor, „Ostatnio dodane”…) gra po niej, ale tu się nie pojawia.
+ */
 fun QueueScreen() {
     val g = App.graph
     val ui by g.player.ui.collectAsState()
-    val rows = rememberLoad(ui.queue) { g.library.tracks(ui.queue) }
+    val source by g.player.source.collectAsState()
+    val queue = ui.userQueue
+    val rows = rememberLoad(queue) { g.library.tracks(queue.map { it.second }).associateBy { it.id } }
+    val current = rememberLoad(ui.currentId) { ui.currentId?.let { g.library.track(it) } }
     val accent = LocalAccent.current
+    val afterQueue = when (g.settings.queueEndAction) {
+        "unlistened" -> "zacznie grać lista „Do odsłuchania”"
+        "repeat" -> "kolejka zagra od nowa"
+        "stop" -> "odtwarzanie się zatrzyma"
+        else -> "dalej zagra " + (source.ifBlank { "poprzednia lista" }.let { if (it == "poprzednia lista") it else "„$it”" })
+    }
     Column(Modifier.fillMaxSize()) {
-        TopBar("Kolejka", extra = { SmallIconButton(Icons39.Close, "Wyczyść kolejkę", tint = C39.Text) { g.player.clearQueue() } })
+        TopBar("Kolejka", extra = {
+            if (queue.isNotEmpty()) SmallIconButton(Icons39.Close, "Wyczyść kolejkę", tint = C39.Text) { g.player.clearQueue() }
+        })
         if (rows == null) { Loading(); return@Column }
-        if (rows.isEmpty()) { EmptyState("Kolejka jest pusta", "Wybierz utwór z biblioteki.", Icons39.Queue); return@Column }
         ScrollColumn {
-            itemsIndexed(rows, key = { i, r -> "$i-${r.id}" }) { i, r ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${i + 1}", Modifier.width(40.dp).padding(start = 12.dp), color = if (i == ui.index) accent else C39.Text3, fontSize = 12.sp)
-                    Column(Modifier.weight(1f)) { TrackRowView(r, ListCtx("Kolejka")) { g.player.skipTo(i) } }
-                    SmallIconButton(Icons39.Close, "Usuń z kolejki", tint = C39.Text3, size = 18.dp) { g.player.remove(i) }
+            if (current != null) {
+                item(key = "now-t") {
+                    SectionTitle(if (ui.currentQueued) "Teraz gra – z kolejki" else "Teraz gra" + (if (source.isNotBlank()) " – $source" else ""))
+                }
+                item(key = "now") { TrackRowView(current, ListCtx("Kolejka")) { Nav.playerOpen = true } }
+            }
+            if (queue.isEmpty()) {
+                item(key = "empty") {
+                    EmptyState("Kolejka jest pusta", "Utwory dodasz opcją „Dodaj do kolejki” albo „Odtwórz następny” – zagrają " +
+                        "przed dalszą częścią wybranej listy.", Icons39.Queue)
+                }
+            } else {
+                item(key = "next-t") { SectionTitle("Następne w kolejce (${queue.size})") }
+                itemsIndexed(queue, key = { i, (idx, id) -> "q$idx-$id-$i" }) { i, (idx, id) ->
+                    val r = rows[id] ?: return@itemsIndexed
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}", Modifier.width(40.dp).padding(start = 12.dp), color = C39.Text3, fontSize = 12.sp)
+                        Column(Modifier.weight(1f)) { TrackRowView(r, ListCtx("Kolejka")) { g.player.skipTo(idx) } }
+                        SmallIconButton(Icons39.Close, "Usuń z kolejki", tint = C39.Text3, size = 18.dp) { g.player.remove(idx) }
+                    }
+                }
+                item(key = "after") {
+                    Text("Po kolejce $afterQueue (Ustawienia → Odtwarzanie).", Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = accent, fontSize = 12.sp)
                 }
             }
         }
