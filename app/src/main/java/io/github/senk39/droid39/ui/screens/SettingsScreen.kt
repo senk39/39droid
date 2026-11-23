@@ -437,6 +437,16 @@ fun SettingsScreen(section: String?) {
                 }
             }
             Toggle("Kropka na końcu paska postępu", null, s.seekStopDot) { s.seekStopDot = it }
+            Text("Animacja odtwarzanego utworu", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp), fontSize = 16.sp)
+            var anim by remember { mutableStateOf(s.playingAnim) }
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                io.github.senk39.droid39.ui.components.PLAYING_ANIMS.forEach { (v, label) ->
+                    AnimChoice(v, label, anim == v) { anim = v; s.playingAnim = v }
+                }
+            }
+            Hint("Na okładce utworu, który teraz gra (listy, kolejka). Przy pauzie – znak pauzy.")
             WidgetsBlock()
             Hint("Przeciągnij palcem w prawo (od lewej połowy ekranu), aby wrócić do poprzedniego ekranu.")
           }
@@ -779,6 +789,22 @@ private fun ManagedReviewDialog(onClose: () -> Unit) {
             }
         },
     )
+}
+
+@Composable
+/** Wybór animacji „teraz gra” – z podglądem na żywo w samym przycisku. */
+private fun AnimChoice(style: String, label: String, selected: Boolean, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(if (selected) accent else Color.Transparent)
+            .border(1.5.dp, if (selected) accent else C39.Line, RoundedCornerShape(50))
+            .clickable(onClick = onClick).padding(start = 12.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        io.github.senk39.droid39.ui.components.PlayingIndicator(style, if (selected) C39.OnAccent else accent, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = if (selected) C39.OnAccent else C39.Text2, fontSize = 14.sp)
+    }
 }
 
 @Composable

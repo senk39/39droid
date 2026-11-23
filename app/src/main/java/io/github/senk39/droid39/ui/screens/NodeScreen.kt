@@ -133,10 +133,11 @@ private fun TrackNode(node: NodeRow) {
             (if (pinned) "Nie trzymaj offline" else "Zawsze na telefonie (offline)") to { g.offline.toggleNode(node.path) },
             "Dodaj wszystkie do kolejki" to { filtered?.let { g.player.enqueue(it) } },
         ),
+        side = if (cols >= 2 && ll != null && roster != null && llIndex != null) ({ LoveLiveFilterBar(effective, folderGroup, roster) }) else null,
         header = {
             if (node.vdbArtistId != null) item { VdbArtistLine(node) }
             if (franchises.isNotEmpty()) franchiseShelf(franchises)
-            if (ll != null && roster != null && llIndex != null) {
+            if (cols < 2 && ll != null && roster != null && llIndex != null) {
                 item { LoveLiveFilterBar(effective, folderGroup, roster) }
             }
             if (folders.isNotEmpty()) {

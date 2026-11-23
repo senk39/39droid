@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -147,9 +148,18 @@ fun HomeScreen() {
             }
         })
         val cols = listColumns()
+        val pcCard = continueFromPcVisible()
         ScrollColumn {
-            item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount, rejected.size) }
-            item { ContinueFromPcCard() }
+            if (cols >= 2 && pcCard) item {
+                // szeroki ekran: stan biblioteki i „Kontynuuj z PC” obok siebie
+                Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                    Box(Modifier.weight(1f).fillMaxHeight()) { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount, rejected.size, fill = true) }
+                    Box(Modifier.weight(1f).fillMaxHeight()) { ContinueFromPcCard(fill = true) }
+                }
+            } else {
+                item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount, rejected.size) }
+                item { ContinueFromPcCard() }
+            }
             if (!ready) {
                 item {
                     EmptyState(
@@ -223,19 +233,27 @@ fun HomeScreen() {
 
 /** „Kontynuuj z PC”: kolejka, utwór i pozycja z 39player (state/now-pc.json na NAS); PC dostaje polecenie pauzy. */
 @Composable
-private fun ContinueFromPcCard() {
+private fun continueFromPcVisible(): Boolean {
     val g = App.graph
     val pc by g.live.pc.collectAsState()
     val now by g.player.now.collectAsState()
+    val st: DeviceState = pc ?: return false
+    val fresh = st.hasTrack && System.currentTimeMillis() - st.tsMs < 7L * 24 * 3600_000
+    // telefon gra już ten utwór (np. zaraz po przejęciu) – karta zbędna
+    return fresh && !(now.playing && now.id != null && now.id == st.trackId)
+}
+
+@Composable
+private fun ContinueFromPcCard(fill: Boolean = false) {
+    val g = App.graph
+    val pc by g.live.pc.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    if (!continueFromPcVisible()) return
     val st: DeviceState = pc ?: return
-    val fresh = st.hasTrack && System.currentTimeMillis() - st.tsMs < 7L * 24 * 3600_000
-    // telefon gra już ten utwór (np. zaraz po przejęciu) – karta zbędna
-    if (!fresh || (now.playing && now.id != null && now.id == st.trackId)) return
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
+        Modifier.fillMaxWidth().then(if (fill) Modifier.fillMaxHeight() else Modifier).padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
             .background(C39.Surface).padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -318,12 +336,12 @@ private fun NasStatusIcon(nas: NasState) {
 
 @Composable
 private fun StatusCard(nas: NasState, running: Boolean, message: String, progress: Float?, error: String?, pending: Int, localCount: Int,
-                       rejected: Int) {
+                       rejected: Int, fill: Boolean = false) {
     val g = App.graph
     val accent = LocalAccent.current
     // stan połączenia z NAS – ikona chmurki obok nazwy aplikacji (NasStatusIcon); tu tylko biblioteka i synchronizacja
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
+        Modifier.fillMaxWidth().then(if (fill) Modifier.fillMaxHeight() else Modifier).padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
             .background(C39.Surface).clickable { Nav.go(Route.SettingsSection("sync")) }.padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         val snapAt = g.settings.snapshotCreated

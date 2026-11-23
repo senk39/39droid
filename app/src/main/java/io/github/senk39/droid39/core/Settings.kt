@@ -132,6 +132,8 @@ class Settings(context: Context) {
     var seekThumb by str("seek_thumb", "bar")
     /** Kropka na końcu paska postępu. */
     var seekStopDot by bool("seek_stop_dot", true)
+    /** Animacja na okładce odtwarzanego utworu: bars, wave, dots, pulse, note, static. */
+    var playingAnim by str("playing_anim", "bars")
     /** Po zakończeniu kolejki: "context" (dalej poprzednia lista), "unlistened", "repeat", "stop". */
     var queueEndAction by str("queue_end_action", "context")
 

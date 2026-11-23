@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -110,6 +111,8 @@ fun TrackListScreen(
     emptyText: String = "Brak utworów",
     /** Co grają „Odtwórz” i „Losowo”, gdy sama lista jest pusta (np. folder tylko z podfolderami). */
     playRows: (() -> List<TrackRow>)? = null,
+    /** Panel obok nagłówka (szeroki ekran) albo pod nim, np. filtry Love Live!. */
+    side: (@Composable () -> Unit)? = null,
 ) {
     var sort by rememberSaveable(title) { mutableStateOf(SortMode.DEFAULT) }
     var desc by rememberSaveable(title) { mutableStateOf(false) }
@@ -142,7 +145,7 @@ fun TrackListScreen(
     Box(Modifier.fillMaxSize()) {
     ScrollbarBox(state) { LazyColumn(state = state, contentPadding = PaddingValues(bottom = if (selection.active) 190.dp else 96.dp)) {
         item(key = "__head") {
-            ListHeader(
+            val head: @Composable () -> Unit = { ListHeader(
                 title = title,
                 subtitle = subtitle ?: rows?.let { "${T.tracks(it.size)} · ${T.totalTime(it.sumOf { r -> r.duration })}" },
                 artKey = headerArt, rel = headerRel,
@@ -152,7 +155,16 @@ fun TrackListScreen(
                 onSort = { m -> if (m == sort) desc = !desc else { sort = m; desc = false } },
                 onFilter = { showFilter = !showFilter; if (!showFilter) filter = "" },
                 actions = actions,
-            )
+            ) }
+            if (side != null && cols >= 2) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(Modifier.weight(1f)) { head() }
+                    Box(Modifier.weight(1f).padding(top = 10.dp, end = 4.dp)) { side() }
+                }
+            } else {
+                head()
+                side?.invoke()
+            }
             if (showFilter) {
                 OutlinedTextField(
                     filter, { filter = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -172,7 +184,10 @@ fun TrackListScreen(
         }
     } }
     val s = sorted
-    if (selection.active && s != null) SelectionBar(selection, s, ctx, Modifier.align(Alignment.BottomCenter))
+    if (selection.active && s != null) SelectionBar(
+        selection, s, ctx,
+        if (cols >= 2) Modifier.align(Alignment.BottomStart).widthIn(max = 440.dp) else Modifier.align(Alignment.BottomCenter),
+    )
     }
 }
 
@@ -191,7 +206,16 @@ fun ListHeader(
     actions: List<Pair<String, () -> Unit>>,
 ) {
     val accent = LocalAccent.current
-    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+    val chips: @Composable () -> Unit = {
+        ActionChip(Icons39.Play, "Odtwórz", accent, filled = true, onClick = onPlay)
+        Spacer(Modifier.width(8.dp))
+        ActionChip(Icons39.Shuffle, "Losowo", accent, onClick = onShuffle)
+    }
+    val tools: @Composable () -> Unit = { HeaderTools(sort, desc, onSort, onFilter, actions) }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(16.dp)) {
+    // od 560 dp (np. telefon poziomo) przyciski obok tytułu – lista zaczyna się wyżej
+    val inline = maxWidth >= 560.dp
+    Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (artKey != null) {
                 Art(artKey, rel, 84.dp, corner = 10.dp)
@@ -201,12 +225,32 @@ fun ListHeader(
                 Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (subtitle != null) Text(subtitle, color = C39.Text2, style = MaterialTheme.typography.bodySmall)
             }
+            if (inline) {
+                Spacer(Modifier.width(12.dp))
+                chips()
+                Spacer(Modifier.width(8.dp))
+                tools()
+            }
         }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionChip(Icons39.Play, "Odtwórz", accent, filled = true, onClick = onPlay)
-            ActionChip(Icons39.Shuffle, "Losowo", accent, onClick = onShuffle)
-            Spacer(Modifier.weight(1f))
+        if (!inline) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                chips()
+                Spacer(Modifier.weight(1f))
+                tools()
+            }
+        }
+    }
+    }
+}
+
+/** Filtruj, sortuj i „więcej” w nagłówku listy. */
+@Composable
+private fun HeaderTools(
+    sort: SortMode?, desc: Boolean, onSort: (SortMode) -> Unit, onFilter: () -> Unit, actions: List<Pair<String, () -> Unit>>,
+) {
+    val accent = LocalAccent.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
             SmallIconButton(Icons39.Filter, "Filtruj", onClick = onFilter)
             if (sort != null) {
                 var open by remember { mutableStateOf(false) }
@@ -234,7 +278,6 @@ fun ListHeader(
             }
         }
     }
-}
 
 @Composable
 fun ActionChip(icon: ImageVector, label: String, color: Color, filled: Boolean = false, onClick: () -> Unit) {
@@ -285,7 +328,8 @@ fun TrackRowView(r: TrackRow, ctx: ListCtx, selection: TrackSelection? = null, o
             if (selected) Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(accent.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
                 Icon(Icons39.Check, "Zaznaczony", Modifier.size(26.dp), tint = C39.OnAccent)
             } else if (playing) Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x88000000)), contentAlignment = Alignment.Center) {
-                Icon(if (now.playing) Icons39.Equalizer else Icons39.Pause, null, Modifier.size(22.dp), tint = accent)
+                if (now.playing) PlayingIndicator(g.settings.playingAnim, accent, Modifier.size(22.dp))
+                else Icon(Icons39.Pause, null, Modifier.size(22.dp), tint = accent)
             }
         }
         Spacer(Modifier.width(12.dp))
