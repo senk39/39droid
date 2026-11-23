@@ -153,7 +153,7 @@ fun PlayerScreen() {
     var seekPos by remember { mutableFloatStateOf(0f) }
     var tagMenu by remember { mutableStateOf<io.github.senk39.droid39.data.TagRow?>(null) }
     val swipe = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
-    Box(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.35f), C39.Bg, C39.Bg)))
             .background(Color(0x22000000))
@@ -166,6 +166,9 @@ fun PlayerScreen() {
                 ) { _, drag -> total += drag }
             },
     ) {
+        // bardzo niskie okno (podzielony ekran w poziomie): bez etykiet i dolnego rzędu ikon (są w menu utworu),
+        // mniejszy przycisk odtwarzania – żeby tytuł i przyciski sterowania zawsze się mieściły
+        val compact = maxHeight < 340.dp
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SmallIconButton(Icons39.ExpandMore, "Zwiń", tint = C39.Text, size = 28.dp) { Nav.playerOpen = false }
@@ -227,7 +230,7 @@ fun PlayerScreen() {
                     }
                 }
             }
-            if (vdb != null || wiki.isNotEmpty()) {
+            if (!compact && (vdb != null || wiki.isNotEmpty())) {
                 Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     wiki.forEach { w ->                         // odnośniki do wiki piosenek (Love Live, BanG Dream…)
                         val p = w.page ?: w.albumPage
@@ -241,7 +244,7 @@ fun PlayerScreen() {
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(if (compact) 4.dp else 14.dp))
             // przed przygotowaniem odtwarzacza (np. kolejka przywrócona po uruchomieniu) długość jest nieznana –
             // wtedy z biblioteki
             val dur = (if (ui.durationMs > 0) ui.durationMs else ((row?.duration ?: 0.0) * 1000).toLong()).coerceAtLeast(1)
@@ -260,10 +263,10 @@ fun PlayerScreen() {
                 SmallIconButton(Icons39.Shuffle, "Losowo", tint = if (ui.shuffle) accent else C39.Text2, size = 26.dp) { g.player.setShuffle(!ui.shuffle) }
                 SmallIconButton(Icons39.Prev, "Poprzedni", tint = C39.Text, size = 38.dp) { g.player.previous() }
                 Box(
-                    Modifier.size(74.dp).clip(CircleShape).background(accent).clickable { g.player.toggle() },
+                    Modifier.size(if (compact) 56.dp else 74.dp).clip(CircleShape).background(accent).clickable { g.player.toggle() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(40.dp), tint = C39.OnAccent)
+                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(if (compact) 30.dp else 40.dp), tint = C39.OnAccent)
                 }
                 SmallIconButton(Icons39.Next, "Następny", tint = C39.Text, size = 38.dp) { g.player.next() }
                 SmallIconButton(
@@ -275,7 +278,7 @@ fun PlayerScreen() {
                 Text(it, color = C39.Warn, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
             }
             Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            if (!compact) Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 SmallIconButton(Icons39.PlaylistAdd, "Dodaj do playlisty", tint = C39.Text2) { addPl = true }
                 SmallIconButton(Icons39.Info, "Informacje o utworze", tint = C39.Text2) { info = true }
                 val local = row?.let { g.files.isLocal(it.id) } ?: false
