@@ -48,6 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.gridItems
+import io.github.senk39.droid39.ui.components.gridBlocks
+import io.github.senk39.droid39.ui.components.listColumns
 import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
@@ -115,6 +118,7 @@ private fun TrackNode(node: NodeRow) {
         else rows.filter { effective.matches(llIndex[it.id]) }
     }
     var albumsExpanded by rememberSaveable(node.id) { mutableStateOf(false) }
+    val cols = listColumns()
     val pinned = g.offline.isNodePinned(node.path)
     TrackListScreen(
         rows = filtered,
@@ -137,7 +141,7 @@ private fun TrackNode(node: NodeRow) {
             }
             if (folders.isNotEmpty()) {
                 item { SectionTitle(if (node.kind == "vocal") "Warianty" else "Podkategorie") }
-                items(folders, key = { "f${it.id}" }) { c -> NodeRowView(c) { Nav.go(Route.Node(c.id)) } }
+                gridItems(folders, cols, key = { _, c -> "f${c.id}" }) { _, c -> NodeRowView(c) { Nav.go(Route.Node(c.id)) } }
             }
             if (albums.isNotEmpty()) {
                 item {
@@ -147,10 +151,11 @@ private fun TrackNode(node: NodeRow) {
                     }
                 }
                 val shown = if (albumsExpanded || albums.size <= 6) albums else albums.take(6)
-                items(shown.chunked(3), key = { "a" + it.first().id }) { row ->
+                val per = 3 * cols
+                items(shown.chunked(per), key = { "a" + it.first().id }) { row ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { a -> Box(Modifier.weight(1f)) { CoverTile(a.name, T.tracks(a.count), a.art, 108.dp) { Nav.go(Route.Node(a.id)) } } }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        repeat(per - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -183,6 +188,7 @@ private fun AggregateNode(node: NodeRow) {
     val liked = remember(children) {
         children.filter { it.likes >= 3 }.sortedByDescending { it.likes }.take(40).filter { it !in top }.shuffled().take(16)
     }
+    val cols = listColumns()
     ScrollColumn {
         item {
             Column(Modifier.padding(16.dp)) {
@@ -203,11 +209,11 @@ private fun AggregateNode(node: NodeRow) {
                 val kids = lib.children(sec.id).filter(::match)
                 if (kids.isNotEmpty()) {
                     item(key = "s${sec.id}") { SectionTitle("${sec.name} (${kids.size})") }
-                    items(kids, key = { it.id }) { c -> NodeRowView(c, showArt = false) { Nav.go(Route.Node(c.id)) } }
+                    gridItems(kids, cols, key = { _, c -> c.id }) { _, c -> NodeRowView(c, showArt = false) { Nav.go(Route.Node(c.id)) } }
                 }
             }
         } else {
-            items(children.filter(::match), key = { it.id }) { c -> NodeRowView(c, showArt = node.kind != "engine_root") { Nav.go(Route.Node(c.id)) } }
+            gridItems(children.filter(::match), cols, key = { _, c -> c.id }) { _, c -> NodeRowView(c, showArt = node.kind != "engine_root") { Nav.go(Route.Node(c.id)) } }
         }
     }
 }

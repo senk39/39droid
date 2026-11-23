@@ -22,6 +22,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -169,14 +172,14 @@ private fun Root() {
             behind = {
                 // ekran, do którego prowadzi gest: spod odtwarzacza – bieżący ekran, inaczej – poprzedni ze stosu
                 val target = if (Nav.playerOpen) Nav.current else Nav.stack.getOrNull(Nav.stack.size - 2)
-                if (target != null) Column(Modifier.fillMaxSize().background(C39.Bg)) {
+                if (target != null) Column(Modifier.fillMaxSize().background(C39.Bg).windowInsetsPadding(sideInsets())) {
                     Box(Modifier.weight(1f)) { Screen(target) }
                     MiniPlayer()
                 }
             },
         ) {
             Box(Modifier.fillMaxSize().background(C39.Bg)) {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().windowInsetsPadding(sideInsets())) {
                     Box(Modifier.weight(1f)) { Screen(Nav.current) }
                     MiniPlayer()
                 }
@@ -191,6 +194,11 @@ private fun Root() {
         }
     }
 }
+
+/** Boczne paski systemowe i wcięcie aparatu (telefon poziomo) – treść list ich nie zasłania. */
+@Composable
+private fun sideInsets() = androidx.compose.foundation.layout.WindowInsets.safeDrawing
+    .only(androidx.compose.foundation.layout.WindowInsetsSides.Horizontal)
 
 /** Prośba o sieć lokalną najwyżej raz na uruchomienie (odmowę obsługują Ustawienia). */
 private var lanAsked = false

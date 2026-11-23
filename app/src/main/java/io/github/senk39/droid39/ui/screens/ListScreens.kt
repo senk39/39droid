@@ -40,6 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.gridItems
+import io.github.senk39.droid39.ui.components.gridBlocks
+import io.github.senk39.droid39.ui.components.listColumns
 import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
@@ -328,11 +331,12 @@ fun StarsScreen() {
         if (stars.isEmpty()) {
             EmptyState("Brak gwiazdek", "Gwiazdki dla tagów, vocaP i albumów nadajesz w 39player na PC.", Icons39.Star); return@Column
         }
+        val cols = listColumns()
         ScrollColumn {
             val vocap = stars.filter { it.kind == "vocap" }.mapNotNull { s -> lib.nodeByPath(s.ident) }
             if (vocap.isNotEmpty()) {
                 item { SectionTitle("vocaP") }
-                items(vocap, key = { "v${it.id}" }) { n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
+                gridItems(vocap, cols, key = { _, n -> "v${n.id}" }) { _, n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
             }
             val tags = stars.filter { it.kind == "tag" }.mapNotNull { s -> s.ident.toLongOrNull()?.let { lib.tag(it) } }
             if (tags.isNotEmpty()) {
@@ -465,10 +469,11 @@ fun SearchScreen() {
             return@Column
         }
         val (nodes, tags, tracks) = r
+        val cols = listColumns()
         ScrollColumn {
             if (nodes.isNotEmpty()) {
                 item { SectionTitle("Kategorie i wykonawcy") }
-                items(nodes.take(20), key = { "n${it.id}" }) { n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
+                gridItems(nodes.take(20), cols, key = { _, n -> "n${n.id}" }) { _, n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
             }
             if (playlists.isNotEmpty()) {
                 item { SectionTitle("Playlisty") }
@@ -481,7 +486,7 @@ fun SearchScreen() {
                 item { TagFlow(tags) }
             }
             item { SectionTitle("Utwory (${tracks.size}${if (tracks.size >= 400) "+" else ""})") }
-            itemsIndexed(tracks, key = { i, t -> "t${t.id}#$i" }) { i, t -> TrackRowView(t, ListCtx("Wyszukiwanie: $q")) { g.player.play(tracks, i, false, "Wyszukiwanie") } }
+            gridItems(tracks, cols, key = { i, t -> "t${t.id}#$i" }) { i, t -> TrackRowView(t, ListCtx("Wyszukiwanie: $q")) { g.player.play(tracks, i, false, "Wyszukiwanie") } }
         }
     }
 }

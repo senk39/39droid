@@ -42,6 +42,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
+import io.github.senk39.droid39.ui.components.gridItems
+import io.github.senk39.droid39.ui.components.gridBlocks
+import io.github.senk39.droid39.ui.components.listColumns
 import io.github.senk39.droid39.ui.components.ScrollColumn
 import io.github.senk39.droid39.App
 import io.github.senk39.droid39.core.Text as T
@@ -143,6 +146,7 @@ fun HomeScreen() {
                 g.scope.launch { g.sync.syncNow() }
             }
         })
+        val cols = listColumns()
         ScrollColumn {
             item { StatusCard(nas, sync.running, sync.message, sync.progress, sync.error, pending, localCount, rejected.size) }
             item { ContinueFromPcCard() }
@@ -191,26 +195,28 @@ fun HomeScreen() {
                 }
             }
             item { SectionTitle("Słuchanie") }
-            item { IconTextRow(Icons39.Inbox, "Do odsłuchania", "Nowe utwory do oceny", C39.Gold, counts?.get("unl")?.toString()) { Nav.go(Route.Special("unl")) } }
-            item { IconTextRow(Icons39.Heart, "Najlepsze utwory", "♥♥ – _NAJLEPSZE", C39.Heart, counts?.get("best")?.toString()) { Nav.go(Route.Special("best")) } }
-            item { IconTextRow(Icons39.HeartOutline, "Polubione utwory", "♥ – z PC i telefonu", C39.Pink, counts?.get("liked")?.toString()) { Nav.go(Route.Special("liked")) } }
-            item { IconTextRow(Icons39.NewRelease, "Ostatnio dodane", null, LocalAccent.current) { Nav.go(Route.Special("recent")) } }
-            item { IconTextRow(Icons39.History, "Ostatnio odtwarzane", null, LocalAccent.current) { Nav.go(Route.Special("played")) } }
-            item { IconTextRow(Icons39.DownloadDone, "Na telefonie", "Pobrane i z karty SD – bez sieci", C39.Green, localCount.toString()) { Nav.go(Route.Special("offline")) } }
-            item { IconTextRow(Icons39.Queue, "Kolejka odtwarzania", null, LocalAccent.current) { Nav.go(Route.Queue) } }
+            gridBlocks(cols, "listen", listOf(
+                { IconTextRow(Icons39.Inbox, "Do odsłuchania", "Nowe utwory do oceny", C39.Gold, counts?.get("unl")?.toString()) { Nav.go(Route.Special("unl")) } },
+                { IconTextRow(Icons39.Heart, "Najlepsze utwory", "♥♥ – _NAJLEPSZE", C39.Heart, counts?.get("best")?.toString()) { Nav.go(Route.Special("best")) } },
+                { IconTextRow(Icons39.HeartOutline, "Polubione utwory", "♥ – z PC i telefonu", C39.Pink, counts?.get("liked")?.toString()) { Nav.go(Route.Special("liked")) } },
+                { IconTextRow(Icons39.NewRelease, "Ostatnio dodane", null, LocalAccent.current) { Nav.go(Route.Special("recent")) } },
+                { IconTextRow(Icons39.History, "Ostatnio odtwarzane", null, LocalAccent.current) { Nav.go(Route.Special("played")) } },
+                { IconTextRow(Icons39.DownloadDone, "Na telefonie", "Pobrane i z karty SD – bez sieci", C39.Green, localCount.toString()) { Nav.go(Route.Special("offline")) } },
+                { IconTextRow(Icons39.Queue, "Kolejka odtwarzania", null, LocalAccent.current) { Nav.go(Route.Queue) } },
+            ))
             item { SectionTitle("Kategorie") }
-            roots.forEach { n ->
-                item(key = "root${n.id}") {
-                    IconTextRow(nodeIcon(n.kind), n.name, null, colorFor(n.kind), n.count.toString()) { Nav.go(Route.Node(n.id)) }
-                }
+            gridItems(roots, cols, key = { _, n -> "root${n.id}" }) { _, n ->
+                IconTextRow(nodeIcon(n.kind), n.name, null, colorFor(n.kind), n.count.toString()) { Nav.go(Route.Node(n.id)) }
             }
             item { SectionTitle("Biblioteka") }
-            item { IconTextRow(Icons39.PlaylistPlay, "Playlisty", null, LocalAccent.current, counts?.get("pl")?.toString()) { Nav.go(Route.Playlists) } }
-            item { IconTextRow(Icons39.Tag, "Tagi (VocaDB)", null, C39.Miku, counts?.get("tags")?.toString()) { Nav.go(Route.Tags) } }
-            item { IconTextRow(Icons39.Star, "Ulubione (gwiazdki)", "Tagi, vocaP i albumy z 39player", C39.Gold) { Nav.go(Route.Stars) } }
-            item { IconTextRow(Icons39.CheckCircle, "Ostatnio zatwierdzone", "Historia z listy Nie przesłuchane", C39.Green) { Nav.go(Route.Commits) } }
-            item { IconTextRow(Icons39.Folder, "Foldery", "Układ folderów jak na PC", LocalAccent.current) { Nav.go(Route.Folder("")) } }
-            item { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } }
+            gridBlocks(cols, "lib", listOf(
+                { IconTextRow(Icons39.PlaylistPlay, "Playlisty", null, LocalAccent.current, counts?.get("pl")?.toString()) { Nav.go(Route.Playlists) } },
+                { IconTextRow(Icons39.Tag, "Tagi (VocaDB)", null, C39.Miku, counts?.get("tags")?.toString()) { Nav.go(Route.Tags) } },
+                { IconTextRow(Icons39.Star, "Ulubione (gwiazdki)", "Tagi, vocaP i albumy z 39player", C39.Gold) { Nav.go(Route.Stars) } },
+                { IconTextRow(Icons39.CheckCircle, "Ostatnio zatwierdzone", "Historia z listy Nie przesłuchane", C39.Green) { Nav.go(Route.Commits) } },
+                { IconTextRow(Icons39.Folder, "Foldery", "Układ folderów jak na PC", LocalAccent.current) { Nav.go(Route.Folder("")) } },
+                { IconTextRow(Icons39.LibraryMusic, "Wszystkie utwory", null, C39.Text2, trackCount.toString()) { Nav.go(Route.Special("all")) } },
+            ))
         }
     }
 }

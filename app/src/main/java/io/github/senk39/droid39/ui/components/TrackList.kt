@@ -129,6 +129,7 @@ fun TrackListScreen(
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val selection = remember(title) { TrackSelection() }
+    val cols = listColumns()
     androidx.activity.compose.BackHandler(enabled = selection.active) { selection.clear() }
     fun playAll(shuffle: Boolean) {
         val s = sorted
@@ -165,7 +166,7 @@ fun TrackListScreen(
             sorted.isEmpty() -> if (emptyText.isNotEmpty() || filter.isNotEmpty()) item {
                 EmptyState(emptyText.ifEmpty { "Brak utworów" }, if (filter.isNotEmpty()) "Nic nie pasuje do filtra." else "")
             }
-            else -> itemsIndexed(sorted, key = { i, r -> "${r.id}#$i" }) { i, r ->
+            else -> gridItems(sorted, cols, key = { i, r -> "${r.id}#$i" }) { i, r ->
                 TrackRowView(r, ctx, selection, onPlay = { player.play(sorted, i, false, ctx.label) })
             }
         }

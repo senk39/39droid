@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
@@ -166,22 +167,22 @@ fun PlayerScreen() {
                 ) { _, drag -> total += drag }
             },
     ) {
-        // bardzo niskie okno (podzielony ekran w poziomie): bez etykiet i dolnego rzędu ikon (są w menu utworu),
-        // mniejszy przycisk odtwarzania – żeby tytuł i przyciski sterowania zawsze się mieściły
+        // Układ zależy od okna: wysokie – okładka nad tytułem; niskie – okładka w prawo, tytuł obok po lewej;
+        // szerokie (telefon poziomo) – po lewej tytuł, pasek i przyciski, po prawej duża okładka. Przyciski
+        // sterowania są zawsze widoczne: w wąskim oknie bez „Losowo” i mniejsze, w bardzo wąskim – bez okładki.
         val compact = maxHeight < 340.dp
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
+        val header: @Composable () -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SmallIconButton(Icons39.ExpandMore, "Zwiń", tint = C39.Text, size = 28.dp) { Nav.playerOpen = false }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ODTWARZANIE", fontSize = 10.sp, color = C39.Text3, letterSpacing = 1.5.sp)
+                    Text("ODTWARZANIE", fontSize = 10.sp, color = C39.Text3, letterSpacing = 1.5.sp, maxLines = 1)
                     Text(source.ifEmpty { "Kolejka" }, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 SmallIconButton(Icons39.Queue, "Kolejka", tint = C39.Text) { Nav.playerOpen = false; Nav.go(Route.Queue) }
                 SmallIconButton(Icons39.More, "Więcej", tint = C39.Text) { menu = true }
             }
-            // okładka zajmuje to, co zostaje po przyciskach; gdy ekran jest niski (np. podzielony), okładka idzie w
-            // prawo, a informacje o utworze – obok niej po lewej; przyciski sterowania są zawsze widoczne
-            val artBox: @Composable (Modifier) -> Unit = { mod ->
+        }
+        val artBox: @Composable (Modifier) -> Unit = { mod ->
             if (row != null) {
                 Box(
                     mod.shadow(18.dp, RoundedCornerShape(16.dp))
@@ -196,8 +197,8 @@ fun PlayerScreen() {
                     Art(row.artKey, row.rel, 360.dp, Modifier.fillMaxSize(), corner = 16.dp, large = true)
                 }
             } else Box(mod.clip(RoundedCornerShape(16.dp)).background(C39.Surface2))
-            }
-            val infoRow: @Composable (Modifier) -> Unit = { mod ->
+        }
+        val infoRow: @Composable (Modifier) -> Unit = { mod ->
             Row(mod, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(row?.title ?: "—", Modifier.basicMarquee(), style = MaterialTheme.typography.titleLarge, maxLines = 1)
@@ -210,26 +211,8 @@ fun PlayerScreen() {
                     HeartIcon(heart, 30.dp, onClick = { g.scope.launch(Dispatchers.IO) { g.library.cycleHeart(row, false); g.player.heartChanged() } })
                 }
             }
-            }
-            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val infoH = 84.dp
-                val tallArt = minOf(maxWidth, maxHeight - infoH - 12.dp)
-                if (tallArt >= maxWidth * 0.6f) {
-                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Spacer(Modifier.weight(0.6f))
-                        artBox(Modifier.size(tallArt))
-                        Spacer(Modifier.weight(0.5f))
-                        infoRow(Modifier.fillMaxWidth())
-                    }
-                } else {
-                    val side = minOf(maxHeight - 8.dp, maxWidth * 0.5f).coerceAtLeast(0.dp)
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        infoRow(Modifier.weight(1f))
-                        Spacer(Modifier.width(12.dp))
-                        if (side >= 40.dp) artBox(Modifier.size(side))
-                    }
-                }
-            }
+        }
+        val pills: @Composable () -> Unit = {
             if (!compact && (vdb != null || wiki.isNotEmpty())) {
                 Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     wiki.forEach { w ->                         // odnośniki do wiki piosenek (Love Live, BanG Dream…)
@@ -244,46 +227,115 @@ fun PlayerScreen() {
                     }
                 }
             }
-            Spacer(Modifier.height(if (compact) 4.dp else 14.dp))
-            // przed przygotowaniem odtwarzacza (np. kolejka przywrócona po uruchomieniu) długość jest nieznana –
-            // wtedy z biblioteki
-            val dur = (if (ui.durationMs > 0) ui.durationMs else ((row?.duration ?: 0.0) * 1000).toLong()).coerceAtLeast(1)
-            val pos = if (seeking) seekPos else ui.positionMs.toFloat()
+        }
+        // przed przygotowaniem odtwarzacza (np. kolejka przywrócona po uruchomieniu) długość jest nieznana –
+        // wtedy z biblioteki
+        val dur = (if (ui.durationMs > 0) ui.durationMs else ((row?.duration ?: 0.0) * 1000).toLong()).coerceAtLeast(1)
+        val pos = if (seeking) seekPos else ui.positionMs.toFloat()
+        val seek: @Composable () -> Unit = {
             SeekBar(pos.coerceIn(0f, dur.toFloat()), dur.toFloat(), onChange = { seeking = true; seekPos = it },
                 onDone = { g.player.seekTo(seekPos.toLong()); seeking = false })
             Row {
                 Text(T.durationMs(pos.toLong()), color = C39.Text2, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
-                if (ui.buffering) Text("buforowanie…", color = C39.Text3, fontSize = 12.sp)
+                if (ui.buffering) Text("buforowanie…", color = C39.Text3, fontSize = 12.sp, maxLines = 1)
                 Spacer(Modifier.weight(1f))
                 Text(T.durationMs(dur), color = C39.Text2, fontSize = 12.sp)
             }
-            Spacer(Modifier.height(8.dp))
+        }
+        // przyciski dopasowane do szerokości: od 330 dp – wszystkie; węższe – bez „Losowo”, mniejsze
+        val controls: @Composable (Dp, Dp) -> Unit = { width, playMax ->
+            val full = width >= 330.dp
+            val tiny = width < 250.dp
+            val play = minOf(playMax, if (full) 74.dp else if (tiny) 52.dp else 62.dp)
+            val skip = if (full) 38.dp else if (tiny) 30.dp else 34.dp
+            val side = if (full) 26.dp else if (tiny) 22.dp else 24.dp
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                SmallIconButton(Icons39.Shuffle, "Losowo", tint = if (ui.shuffle) accent else C39.Text2, size = 26.dp) { g.player.setShuffle(!ui.shuffle) }
-                SmallIconButton(Icons39.Prev, "Poprzedni", tint = C39.Text, size = 38.dp) { g.player.previous() }
+                if (full) SmallIconButton(Icons39.Shuffle, "Losowo", tint = if (ui.shuffle) accent else C39.Text2, size = side) { g.player.setShuffle(!ui.shuffle) }
+                SmallIconButton(Icons39.Prev, "Poprzedni", tint = C39.Text, size = skip) { g.player.previous() }
                 Box(
-                    Modifier.size(if (compact) 56.dp else 74.dp).clip(CircleShape).background(accent).clickable { g.player.toggle() },
+                    Modifier.size(play).clip(CircleShape).background(accent).clickable { g.player.toggle() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(if (compact) 30.dp else 40.dp), tint = C39.OnAccent)
+                    Icon(if (ui.isPlaying) Icons39.Pause else Icons39.Play, "Odtwórz/Pauza", Modifier.size(play * 0.54f), tint = C39.OnAccent)
                 }
-                SmallIconButton(Icons39.Next, "Następny", tint = C39.Text, size = 38.dp) { g.player.next() }
+                SmallIconButton(Icons39.Next, "Następny", tint = C39.Text, size = skip) { g.player.next() }
                 SmallIconButton(
                     if (ui.repeat == Player.REPEAT_MODE_ONE) Icons39.RepeatOne else Icons39.Repeat, "Powtarzanie",
-                    tint = if (ui.repeat != Player.REPEAT_MODE_OFF) accent else C39.Text2, size = 26.dp,
+                    tint = if (ui.repeat != Player.REPEAT_MODE_OFF) accent else C39.Text2, size = side,
                 ) { g.player.cycleRepeat() }
             }
             ui.error?.let {
                 Text(it, color = C39.Warn, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
             }
-            Spacer(Modifier.height(4.dp))
+        }
+        val bottomRow: @Composable () -> Unit = {
             if (!compact) Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 SmallIconButton(Icons39.PlaylistAdd, "Dodaj do playlisty", tint = C39.Text2) { addPl = true }
                 SmallIconButton(Icons39.Info, "Informacje o utworze", tint = C39.Text2) { info = true }
                 val local = row?.let { g.files.isLocal(it.id) } ?: false
                 Icon(if (local) Icons39.DownloadDone else Icons39.Cloud, if (local) "Na telefonie" else "Strumień z NAS",
                     Modifier.padding(9.dp).size(22.dp), tint = if (local) accent else C39.Text3)
+            }
+        }
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp),
+        ) {
+            val wide = maxWidth >= 560.dp && maxWidth > maxHeight * 1.25f
+            if (wide) {
+                // poziomo: po prawej okładka na całą wysokość, po lewej reszta
+                val artSide = minOf(maxHeight - 16.dp, maxWidth * 0.5f)
+                val leftW = maxWidth - artSide - 28.dp
+                val playMax = if (maxHeight < 380.dp) 62.dp else 74.dp
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.width(leftW).fillMaxSize()) {
+                        header()
+                        Spacer(Modifier.weight(1f))
+                        infoRow(Modifier.fillMaxWidth())
+                        pills()
+                        Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+                        seek()
+                        controls(leftW, playMax)
+                        Spacer(Modifier.weight(1f))
+                        bottomRow()
+                    }
+                    Spacer(Modifier.width(28.dp))
+                    artBox(Modifier.size(artSide))
+                }
+            } else {
+                val contentW = maxWidth
+                Column(Modifier.fillMaxSize()) {
+                    header()
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        val infoH = 84.dp
+                        val tallArt = minOf(maxWidth, maxHeight - infoH - 12.dp)
+                        if (tallArt >= maxWidth * 0.6f) {
+                            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Spacer(Modifier.weight(0.6f))
+                                artBox(Modifier.size(tallArt))
+                                Spacer(Modifier.weight(0.5f))
+                                infoRow(Modifier.fillMaxWidth())
+                            }
+                        } else {
+                            // bardzo wąskie okno – bez okładki, cała szerokość dla tytułu
+                            val side = if (maxWidth < 260.dp) 0.dp else minOf(maxHeight - 8.dp, maxWidth * 0.5f).coerceAtLeast(0.dp)
+                            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                infoRow(Modifier.weight(1f))
+                                if (side >= 40.dp) {
+                                    Spacer(Modifier.width(12.dp))
+                                    artBox(Modifier.size(side))
+                                }
+                            }
+                        }
+                    }
+                    pills()
+                    Spacer(Modifier.height(if (compact) 4.dp else 14.dp))
+                    seek()
+                    Spacer(Modifier.height(8.dp))
+                    controls(contentW, 74.dp)
+                    Spacer(Modifier.height(4.dp))
+                    bottomRow()
+                }
             }
         }
     }
