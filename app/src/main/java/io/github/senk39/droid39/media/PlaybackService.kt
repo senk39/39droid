@@ -313,6 +313,8 @@ class PlaybackService : MediaLibraryService() {
 
     private fun heartButton(level: Int): CommandButton =
         CommandButton.Builder(if (level > 0) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED)
+            // najlepsze – podwójne serduszko jak w aplikacji (systemowa ikona ma tylko jedno)
+            .apply { if (level >= 2) setCustomIconResId(R.drawable.ic_heart_double) }
             .setDisplayName(when (level) { 2 -> "Najlepsze ♥♥"; 1 -> "Polubione ♥"; else -> "Polub" })
             .setSessionCommand(SessionCommand(CMD_HEART, Bundle.EMPTY))
             // SLOT_OVERFLOW: jedyne miejsce, które Media3 eksportuje do powiadomienia i sesji systemowej

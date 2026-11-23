@@ -176,10 +176,12 @@ fun PlayerScreen() {
                 SmallIconButton(Icons39.Queue, "Kolejka", tint = C39.Text) { Nav.playerOpen = false; Nav.go(Route.Queue) }
                 SmallIconButton(Icons39.More, "Więcej", tint = C39.Text) { menu = true }
             }
-            Spacer(Modifier.weight(0.6f))
+            // okładka zajmuje to, co zostaje po przyciskach; gdy ekran jest niski (np. podzielony), okładka idzie w
+            // prawo, a informacje o utworze – obok niej po lewej; przyciski sterowania są zawsze widoczne
+            val artBox: @Composable (Modifier) -> Unit = { mod ->
             if (row != null) {
                 Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f).shadow(18.dp, RoundedCornerShape(16.dp))
+                    mod.shadow(18.dp, RoundedCornerShape(16.dp))
                         .pointerInput(Unit) {
                             var total = 0f
                             detectHorizontalDragGestures(
@@ -190,9 +192,10 @@ fun PlayerScreen() {
                 ) {
                     Art(row.artKey, row.rel, 360.dp, Modifier.fillMaxSize(), corner = 16.dp, large = true)
                 }
-            } else Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)).background(C39.Surface2))
-            Spacer(Modifier.weight(0.5f))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            } else Box(mod.clip(RoundedCornerShape(16.dp)).background(C39.Surface2))
+            }
+            val infoRow: @Composable (Modifier) -> Unit = { mod ->
+            Row(mod, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(row?.title ?: "—", Modifier.basicMarquee(), style = MaterialTheme.typography.titleLarge, maxLines = 1)
                     Text(row?.artist ?: "", color = C39.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.basicMarquee())
@@ -202,6 +205,26 @@ fun PlayerScreen() {
                 if (row != null) {
                     val heart = remember(overlay, row) { g.library.heart(row) }
                     HeartIcon(heart, 30.dp, onClick = { g.scope.launch(Dispatchers.IO) { g.library.cycleHeart(row, false); g.player.heartChanged() } })
+                }
+            }
+            }
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val infoH = 84.dp
+                val tallArt = minOf(maxWidth, maxHeight - infoH - 12.dp)
+                if (tallArt >= maxWidth * 0.6f) {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.weight(0.6f))
+                        artBox(Modifier.size(tallArt))
+                        Spacer(Modifier.weight(0.5f))
+                        infoRow(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    val side = minOf(maxHeight - 8.dp, maxWidth * 0.5f).coerceAtLeast(0.dp)
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        infoRow(Modifier.weight(1f))
+                        Spacer(Modifier.width(12.dp))
+                        if (side >= 40.dp) artBox(Modifier.size(side))
+                    }
                 }
             }
             if (vdb != null || wiki.isNotEmpty()) {
@@ -251,7 +274,7 @@ fun PlayerScreen() {
             ui.error?.let {
                 Text(it, color = C39.Warn, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
             }
-            Spacer(Modifier.weight(0.4f))
+            Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 SmallIconButton(Icons39.PlaylistAdd, "Dodaj do playlisty", tint = C39.Text2) { addPl = true }
                 SmallIconButton(Icons39.Info, "Informacje o utworze", tint = C39.Text2) { info = true }
