@@ -133,10 +133,10 @@ private fun TrackNode(node: NodeRow) {
             (if (pinned) "Nie trzymaj offline" else "Zawsze na telefonie (offline)") to { g.offline.toggleNode(node.path) },
             "Dodaj wszystkie do kolejki" to { filtered?.let { g.player.enqueue(it) } },
         ),
-        side = if (cols >= 2 && ll != null && roster != null && llIndex != null) ({ LoveLiveFilterBar(effective, folderGroup, roster) }) else null,
+        side = if (cols >= 2 && ll != null && roster != null && llIndex != null) ({ LoveLiveFilterBar(effective, folderGroup, roster, wide = true) }) else null,
         header = {
             if (node.vdbArtistId != null) item { VdbArtistLine(node) }
-            if (franchises.isNotEmpty()) franchiseShelf(franchises)
+            if (franchises.isNotEmpty()) franchiseShelf(franchises, cols)
             if (cols < 2 && ll != null && roster != null && llIndex != null) {
                 item { LoveLiveFilterBar(effective, folderGroup, roster) }
             }
@@ -231,9 +231,9 @@ private fun ArtistShelf(title: String, nodes: List<NodeRow>) {
 }
 
 /** Półka „Serie” w kategorii Anime (Love Live!, BanG Dream!, Project Sekai, THE IDOLM@STER, D4DJ, K-On!, DEN-ON-BU). */
-private fun LazyListScope.franchiseShelf(list: List<Franchise>) {
+private fun LazyListScope.franchiseShelf(list: List<Franchise>, cols: Int) {
     item { SectionTitle("Serie") }
-    items(list, key = { "fr${it.id}" }) { f ->
+    gridItems(list, cols, key = { _, f -> "fr${f.id}" }) { _, f ->
         val lib = App.graph.library
         val enabled = f.count > 0
         Row(
@@ -269,25 +269,28 @@ private fun LazyListScope.franchiseShelf(list: List<Franchise>) {
 // ------------------------------------------------------------------------------------------- filtry Love Live!
 
 @Composable
-private fun LoveLiveFilterBar(state: LlFilter, folderGroup: String, roster: LlRoster) {
+private fun LoveLiveFilterBar(state: LlFilter, folderGroup: String, roster: LlRoster, wide: Boolean = false) {
     var picker by remember { mutableStateOf<String?>(null) }
     val accent = LocalAccent.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(C39.Surface).padding(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Filtry Love Live!", Modifier.weight(1f), color = accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text("Filtry Love Live!", Modifier.weight(1f), color = accent, fontWeight = FontWeight.SemiBold, fontSize = if (wide) 15.sp else 13.sp)
             if (state.active && !(folderGroup.isNotEmpty() && state.copy(group = "") == LlFilter())) {
                 Text("Wyczyść", Modifier.clip(RoundedCornerShape(50)).clickable { LlState.filter = LlFilter() }.padding(6.dp), color = C39.Text2, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(6.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip39("Grupa", state.group.ifEmpty { null }, roster.groups.firstOrNull { it.name == state.group }?.icon, enabled = folderGroup.isEmpty()) { picker = "group" }
-            FilterChip39("Postać", state.char.ifEmpty { null }, roster.chars.firstOrNull { it.name == state.char }?.icon) { picker = "char" }
-            FilterChip39("Subunit", state.unit.ifEmpty { null }, roster.units.firstOrNull { it.name == state.unit }?.icon) { picker = "unit" }
-            FilterChip39("Tylko solowe", if (state.solo) "tak" else null, null) { LlState.filter = LlState.filter.copy(solo = !state.solo) }
-            FilterChip39("Instrumentalne", tri(state.inst), null) { LlState.filter = LlState.filter.copy(inst = nextTri(state.inst)) }
-            FilterChip39("OST", tri(state.ost), null) { LlState.filter = LlState.filter.copy(ost = nextTri(state.ost)) }
+        val chips: @Composable () -> Unit = {
+            FilterChip39("Grupa", state.group.ifEmpty { null }, roster.groups.firstOrNull { it.name == state.group }?.icon, enabled = folderGroup.isEmpty(), big = wide) { picker = "group" }
+            FilterChip39("Postać", state.char.ifEmpty { null }, roster.chars.firstOrNull { it.name == state.char }?.icon, big = wide) { picker = "char" }
+            FilterChip39("Subunit", state.unit.ifEmpty { null }, roster.units.firstOrNull { it.name == state.unit }?.icon, big = wide) { picker = "unit" }
+            FilterChip39("Tylko solowe", if (state.solo) "tak" else null, null, big = wide) { LlState.filter = LlState.filter.copy(solo = !state.solo) }
+            FilterChip39("Instrumentalne", tri(state.inst), null, big = wide) { LlState.filter = LlState.filter.copy(inst = nextTri(state.inst)) }
+            FilterChip39("OST", tri(state.ost), null, big = wide) { LlState.filter = LlState.filter.copy(ost = nextTri(state.ost)) }
         }
+        // obok nagłówka (szeroki ekran) – zawijane w kilka wierszy; w pionie – jeden przewijany wiersz
+        if (wide) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { chips() }
+        else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { chips() }
     }
     when (picker) {
         "group" -> LlPicker("Grupa", listOf(roster.groups), state.group, { picker = null }) { name ->
@@ -313,23 +316,24 @@ private fun tri(v: String) = when (v) { "nie" -> "bez"; "tylko" -> "tylko"; else
 private fun nextTri(v: String) = when (v) { "tak" -> "nie"; "nie" -> "tylko"; else -> "tak" }
 
 @Composable
-private fun FilterChip39(label: String, value: String?, icon: String?, enabled: Boolean = true, onClick: () -> Unit) {
+private fun FilterChip39(label: String, value: String?, icon: String?, enabled: Boolean = true, big: Boolean = false, onClick: () -> Unit) {
     val accent = LocalAccent.current
     val on = value != null
     Row(
         Modifier.clip(RoundedCornerShape(50))
             .background(if (on) accent.copy(alpha = 0.18f) else C39.Surface2)
             .border(1.dp, if (on) accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(50))
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = if (big) 12.dp else 10.dp, vertical = if (big) 7.dp else 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) { LlIcon(icon, 18.dp); Spacer(Modifier.width(4.dp)) }
-        Text(if (on) "$label: $value" else label, fontSize = 12.sp, color = if (on) accent else if (enabled) C39.Text else C39.Text3, maxLines = 1)
+        if (icon != null) { LlIcon(icon, if (big) 22.dp else 18.dp); Spacer(Modifier.width(4.dp)) }
+        Text(if (on) "$label: $value" else label, fontSize = if (big) 14.sp else 12.sp, color = if (on) accent else if (enabled) C39.Text else C39.Text3, maxLines = 1)
     }
 }
 
 @Composable
 private fun LlPicker(title: String, columns: List<List<LlEntry>>, selected: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val wide = io.github.senk39.droid39.ui.components.listColumns() >= 2
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C39.Surface) {
         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -340,7 +344,16 @@ private fun LlPicker(title: String, columns: List<List<LlEntry>>, selected: Stri
                 col.first().group?.takeIf { columns.size > 1 }?.let { g ->
                     Text(g, color = LocalAccent.current, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (wide) col.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { e ->
+                            Box(Modifier.weight(1f)) {
+                                PickItem(e.name, e.icon, e.count, e.name == selected, Modifier.fillMaxWidth()) { onPick(e.name); onDismiss() }
+                            }
+                        }
+                        if (pair.size < 2) Spacer(Modifier.weight(1f))
+                    }
+                } else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     col.forEach { e -> PickItem(e.name, e.icon, e.count, e.name == selected) { onPick(e.name); onDismiss() } }
                 }
             }
@@ -349,16 +362,16 @@ private fun LlPicker(title: String, columns: List<List<LlEntry>>, selected: Stri
 }
 
 @Composable
-private fun PickItem(name: String, icon: String?, count: Int?, selected: Boolean, onClick: () -> Unit) {
+private fun PickItem(name: String, icon: String?, count: Int?, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val accent = LocalAccent.current
     Row(
-        Modifier.padding(vertical = 2.dp).clip(RoundedCornerShape(10.dp))
+        modifier.padding(vertical = 2.dp).clip(RoundedCornerShape(10.dp))
             .background(if (selected) accent.copy(alpha = 0.2f) else C39.Surface2)
             .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { LlIcon(icon, 24.dp); Spacer(Modifier.width(6.dp)) }
-        Text(name, fontSize = 13.sp, color = if (selected) accent else C39.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(name, Modifier.weight(1f, fill = false), fontSize = 13.sp, color = if (selected) accent else C39.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (count != null) Text("  $count", fontSize = 11.sp, color = C39.Text3)
     }
 }

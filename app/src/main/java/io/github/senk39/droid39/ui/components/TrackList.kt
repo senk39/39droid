@@ -244,6 +244,18 @@ fun ListHeader(
     }
 }
 
+private fun sortIcon(m: SortMode) = when (m) {
+    SortMode.DEFAULT -> Icons39.Sort
+    SortMode.TITLE -> Icons39.SortAlpha
+    SortMode.ARTIST -> Icons39.Person
+    SortMode.ALBUM -> Icons39.Album
+    SortMode.DURATION -> Icons39.Timer
+    SortMode.ADDED -> Icons39.NewRelease
+    SortMode.PLAYS -> Icons39.History
+    SortMode.YEAR -> Icons39.Calendar
+    SortMode.RANDOM -> Icons39.Shuffle
+}
+
 /** Filtruj, sortuj i „więcej” w nagłówku listy. */
 @Composable
 private fun HeaderTools(
@@ -257,12 +269,22 @@ private fun HeaderTools(
                 Box {
                     SmallIconButton(Icons39.Sort, "Sortuj", tint = if (sort != SortMode.DEFAULT) accent else C39.Text2) { open = true }
                     DropdownMenu(open, { open = false }) {
-                        SortMode.entries.forEach { m ->
-                            DropdownMenuItem(
-                                text = { Text(m.label + if (m == sort && m != SortMode.DEFAULT && m != SortMode.RANDOM) (if (desc) "  ↓" else "  ↑") else "") },
-                                onClick = { onSort(m); open = false },
-                                leadingIcon = { if (m == sort) Icon(Icons39.Check, null, tint = accent) },
-                            )
+                        // dwie kolumny z ikonami – niższe menu (w poziomie mieści się bez przewijania)
+                        SortMode.entries.chunked(2).forEach { pair ->
+                            Row {
+                                pair.forEach { m ->
+                                    val on = m == sort
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(m.label + if (on && m != SortMode.DEFAULT && m != SortMode.RANDOM) (if (desc) "  ↓" else "  ↑") else "",
+                                                color = if (on) accent else C39.Text, fontWeight = if (on) FontWeight.SemiBold else null, maxLines = 1)
+                                        },
+                                        onClick = { onSort(m); open = false },
+                                        leadingIcon = { Icon(sortIcon(m), null, Modifier.size(20.dp), tint = if (on) accent else C39.Text2) },
+                                        modifier = Modifier.width(184.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
