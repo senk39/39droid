@@ -7,6 +7,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -123,12 +125,37 @@ fun HeartIcon(level: Int, size: Dp = 20.dp, modifier: Modifier = Modifier, onCli
 }
 
 @Composable
-fun Pill(text: String, color: Color, modifier: Modifier = Modifier, filled: Boolean = true, onClick: (() -> Unit)? = null) {
+/**
+ * Etykieta (tag, typ utworu, VocaDB…): kolorowe tło i tekst w tym samym odcieniu, czytelny na tle ekranu – w jasnym
+ * motywie przyciemniony, w ciemnym rozjaśniony. [onLongClick] – np. menu „dodaj tag do kolejki”.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun Pill(
+    text: String, color: Color, modifier: Modifier = Modifier, filled: Boolean = true, onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val light = C39.palette.light
     val base = modifier.clip(RoundedCornerShape(50))
-    val m = (if (onClick != null) base.clickable(onClick = onClick) else base)
-        .background(if (filled) color.copy(alpha = 0.22f) else Color.Transparent)
-        .padding(horizontal = 7.dp, vertical = 2.dp)
-    Text(text, m, color = if (filled) lighten(color) else color, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    val m = (if (onClick != null || onLongClick != null) base.combinedClickable(onClick = onClick ?: {}, onLongClick = onLongClick) else base)
+        .background(if (filled) color.copy(alpha = if (light) 0.16f else 0.30f) else Color.Transparent)
+        .padding(horizontal = 8.dp, vertical = 3.dp)
+    val fg = when {
+        light -> darken(color)
+        filled -> lighten(color)
+        else -> color
+    }
+    Text(text, m, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+}
+
+/** Kolor tekstu na jasnym tle: ciemniejszy odcień (kontrast co najmniej jak szary tekst pomocniczy). */
+fun darken(c: Color): Color {
+    var x = Color(c.red, c.green, c.blue, 1f)
+    var k = 0
+    while (x.luminance() > 0.13f && k < 10) {
+        x = Color(x.red * 0.8f, x.green * 0.8f, x.blue * 0.8f, 1f)
+        k++
+    }
+    return x
 }
 
 fun lighten(c: Color): Color = Color(

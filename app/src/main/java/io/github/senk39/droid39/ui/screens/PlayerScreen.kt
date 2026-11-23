@@ -61,6 +61,7 @@ import io.github.senk39.droid39.ui.Icons39
 import io.github.senk39.droid39.ui.Nav
 import io.github.senk39.droid39.ui.Route
 import io.github.senk39.droid39.ui.components.AddToPlaylistDialog
+import io.github.senk39.droid39.ui.components.SheetItem
 import io.github.senk39.droid39.ui.components.Art
 import io.github.senk39.droid39.ui.components.HeartIcon
 import io.github.senk39.droid39.ui.components.ListCtx
@@ -150,11 +151,20 @@ fun PlayerScreen() {
     var addPl by remember { mutableStateOf(false) }
     var seeking by remember { mutableStateOf(false) }
     var seekPos by remember { mutableFloatStateOf(0f) }
+    var tagMenu by remember { mutableStateOf<io.github.senk39.droid39.data.TagRow?>(null) }
+    val swipe = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.35f), C39.Bg, C39.Bg)))
             .background(Color(0x22000000))
-            .pointerInput(Unit) { detectVerticalDragGestures { _, drag -> if (drag > 30) Nav.playerOpen = false } },
+            // w dół – zwinięcie odtwarzacza; w górę – menu utworu (jak przycisk z trzema kropkami)
+            .pointerInput(Unit) {
+                var total = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { total = 0f },
+                    onDragEnd = { if (total > swipe) Nav.playerOpen = false else if (total < -swipe) menu = true },
+                ) { _, drag -> total += drag }
+            },
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -202,7 +212,10 @@ fun PlayerScreen() {
                     }
                     if (vdb != null) vdb.songId?.let { Pill("VocaDB ${T.vdbId(it)}", if (vdb.issue.isNotEmpty()) C39.Warn else C39.Miku, onClick = { info = true }) }
                     if (vdb != null && vdb.songType.isNotEmpty() && vdb.songType != "Original song") Pill(vdb.songType, C39.Gold)
-                    vdb?.tags.orEmpty().take(4).forEach { t -> Pill(t.name, C39.TagColors[t.category] ?: C39.Text2, onClick = { Nav.playerOpen = false; Nav.go(Route.Tag(t.id)) }) }
+                    vdb?.tags.orEmpty().take(4).forEach { t ->
+                        Pill(t.name, C39.TagColors[t.category] ?: C39.Text2,
+                            onClick = { Nav.playerOpen = false; Nav.go(Route.Tag(t.id)) }, onLongClick = { tagMenu = t })
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -210,12 +223,8 @@ fun PlayerScreen() {
             // wtedy z biblioteki
             val dur = (if (ui.durationMs > 0) ui.durationMs else ((row?.duration ?: 0.0) * 1000).toLong()).coerceAtLeast(1)
             val pos = if (seeking) seekPos else ui.positionMs.toFloat()
-            Slider(
-                value = pos.coerceIn(0f, dur.toFloat()), valueRange = 0f..dur.toFloat(),
-                onValueChange = { seeking = true; seekPos = it },
-                onValueChangeFinished = { g.player.seekTo(seekPos.toLong()); seeking = false },
-                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = C39.Surface3),
-            )
+            SeekBar(pos.coerceIn(0f, dur.toFloat()), dur.toFloat(), onChange = { seeking = true; seekPos = it },
+                onDone = { g.player.seekTo(seekPos.toLong()); seeking = false })
             Row {
                 Text(T.durationMs(pos.toLong()), color = C39.Text2, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
@@ -253,6 +262,74 @@ fun PlayerScreen() {
         }
     }
     if (menu && row != null) TrackActionsSheet(listOf(row), ListCtx("Odtwarzacz")) { menu = false }
+    tagMenu?.let { t -> TagActionsSheet(t) { tagMenu = null } }
     if (info && row != null) TrackInfoSheet(row) { info = false }
     if (addPl && row != null) AddToPlaylistDialog(listOf(row)) { addPl = false }
+}
+
+/**
+ * Pasek postępu z wybieranym wskaźnikiem pozycji (Ustawienia → Wygląd i interfejs): pionowa kreska, kółko albo brak –
+ * wtedy postęp pokazuje sam kolor paska; kropka na końcu paska – opcjonalna.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SeekBar(value: Float, max: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    val g = App.graph
+    val changes by g.settings.changes.collectAsState()
+    val thumbStyle = remember(changes) { g.settings.seekThumb }
+    val dot = remember(changes) { g.settings.seekStopDot }
+    val accent = LocalAccent.current
+    val colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = C39.Surface3)
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Slider(
+        value = value, onValueChange = onChange, onValueChangeFinished = onDone, valueRange = 0f..max,
+        colors = colors, interactionSource = interaction,
+        thumb = {
+            when (thumbStyle) {
+                "circle" -> Box(Modifier.size(18.dp).shadow(2.dp, CircleShape).background(accent, CircleShape))
+                "none" -> Spacer(Modifier.size(width = 2.dp, height = 18.dp))
+                else -> SliderDefaults.Thumb(interactionSource = interaction, colors = colors)
+            }
+        },
+        track = { st ->
+            val m = when (thumbStyle) {
+                "circle" -> Modifier.height(6.dp)
+                "none" -> Modifier.height(10.dp)
+                else -> Modifier
+            }
+            val gap = if (thumbStyle == "bar") 6.dp else 0.dp
+            if (dot) SliderDefaults.Track(sliderState = st, modifier = m, colors = colors, thumbTrackGapSize = gap)
+            else SliderDefaults.Track(sliderState = st, modifier = m, colors = colors, thumbTrackGapSize = gap, drawStopIndicator = null)
+        },
+    )
+}
+
+/** Przytrzymanie tagu w odtwarzaczu: wszystkie utwory tagu – jako następne, do kolejki albo do playlisty. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun TagActionsSheet(tag: io.github.senk39.droid39.data.TagRow, onDismiss: () -> Unit) {
+    val g = App.graph
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val rows = rememberLoad("tag", tag.id) { g.library.tagTracks(tag.id) }
+    var addPl by remember { mutableStateOf(false) }
+    fun toast(msg: String) = android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show()
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C39.Surface) {
+        Column(Modifier.navigationBarsPadding().padding(bottom = 8.dp)) {
+            Text("Tag: ${tag.name}", Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.titleMedium)
+            Text(rows?.let { T.tracks(it.size) } ?: "Wczytywanie…", Modifier.padding(horizontal = 20.dp), color = C39.Text2, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            val r = rows.orEmpty()
+            SheetItem(Icons39.PlaylistPlay, "Odtwórz wszystkie jako następne") {
+                if (r.isNotEmpty()) { g.player.playNext(r); toast("Zagrają jako następne: ${T.tracks(r.size)}") }
+                onDismiss()
+            }
+            SheetItem(Icons39.Queue, "Dodaj wszystkie do kolejki") {
+                if (r.isNotEmpty()) { g.player.enqueue(r); toast("Dodano do kolejki: ${T.tracks(r.size)}") }
+                onDismiss()
+            }
+            SheetItem(Icons39.PlaylistAdd, "Dodaj wszystkie do playlisty…") { if (r.isNotEmpty()) addPl = true }
+            SheetItem(Icons39.Tag, "Pokaż utwory z tagu") { Nav.playerOpen = false; Nav.go(Route.Tag(tag.id)); onDismiss() }
+        }
+    }
+    if (addPl) AddToPlaylistDialog(rows.orEmpty()) { addPl = false; onDismiss() }
 }

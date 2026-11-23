@@ -429,6 +429,14 @@ fun SettingsScreen(section: String?) {
             Toggle("Przytrzymanie okładki zaznacza utwory",
                 if (s.coverLongPressSelects) "Okładka – zaznaczanie, reszta wiersza – menu utworu"
                 else "Domyślnie: okładka – menu utworu, reszta wiersza – zaznaczanie", s.coverLongPressSelects) { s.coverLongPressSelects = it }
+            Text("Pasek postępu w odtwarzaczu", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp), fontSize = 16.sp)
+            var thumb by remember { mutableStateOf(s.seekThumb) }
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("bar" to "Kreska", "circle" to "Kółko", "none" to "Brak – sam kolor").forEach { (v, label) ->
+                    Choice(label, thumb == v) { thumb = v; s.seekThumb = v }
+                }
+            }
+            Toggle("Kropka na końcu paska postępu", null, s.seekStopDot) { s.seekStopDot = it }
             WidgetsBlock()
             Hint("Przeciągnij palcem w prawo (od lewej połowy ekranu), aby wrócić do poprzedniego ekranu.")
           }

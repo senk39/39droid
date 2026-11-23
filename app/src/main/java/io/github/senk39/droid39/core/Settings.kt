@@ -128,6 +128,10 @@ class Settings(context: Context) {
     var resumeOnStart by bool("resume_on_start", false)
     /** Przytrzymanie okładki utworu zaczyna zaznaczanie (a reszty wiersza – menu utworu); domyślnie odwrotnie. */
     var coverLongPressSelects by bool("cover_long_press_selects", false)
+    /** Wskaźnik pozycji na pasku postępu odtwarzacza: "bar" (pionowa kreska), "circle" (kółko), "none" (sam kolor paska). */
+    var seekThumb by str("seek_thumb", "bar")
+    /** Kropka na końcu paska postępu. */
+    var seekStopDot by bool("seek_stop_dot", true)
     /** Po zakończeniu kolejki: "context" (dalej poprzednia lista), "unlistened", "repeat", "stop". */
     var queueEndAction by str("queue_end_action", "context")
 
