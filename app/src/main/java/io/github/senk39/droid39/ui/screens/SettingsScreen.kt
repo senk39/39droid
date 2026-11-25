@@ -650,6 +650,12 @@ private fun NasStatusLine() {
         Spacer(Modifier.width(10.dp))
         Text(text, fontSize = 13.sp, color = C39.Text2)
     }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    if ((nas as? io.github.senk39.droid39.sync.NasState.Offline)?.vpn?.let { it != io.github.senk39.droid39.sync.VpnHint.NONE } == true) {
+        Text("Otwórz Tailscale", Modifier.padding(start = 46.dp, bottom = 6.dp).clip(RoundedCornerShape(50))
+            .clickable { io.github.senk39.droid39.sync.Nas.openTailscale(ctx) }.padding(horizontal = 10.dp, vertical = 6.dp),
+            color = LocalAccent.current, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable

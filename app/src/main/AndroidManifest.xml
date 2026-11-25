@@ -21,6 +21,8 @@
     <!-- Simple Scrobbler (Simple Last.fm Scrobbler): sprawdzenie, czy jest zainstalowany, i broadcast SLS API -->
     <queries>
         <package android:name="com.adam.aslfms" />
+        <!-- Tailscale: przycisk „Otwórz Tailscale”, gdy NAS poza domem nie odpowiada -->
+        <package android:name="com.tailscale.ipn" />
     </queries>
 
     <application

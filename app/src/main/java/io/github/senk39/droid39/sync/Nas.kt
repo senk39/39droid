@@ -15,7 +15,16 @@ sealed class NasState {
     data object Unknown : NasState()
     data object NotConfigured : NasState()
     data class Online(val label: String) : NasState()
-    data class Offline(val reason: String) : NasState()
+    data class Offline(val reason: String, val vpn: VpnHint = VpnHint.NONE) : NasState()
+}
+
+/** Podpowiedź, gdy NAS nie odpowiada, a w adresach jest adres Tailscale (poza domem jedyna droga do NAS). */
+enum class VpnHint {
+    NONE,
+    /** Na telefonie nie działa żadna sieć VPN – Tailscale wyłączony albo zamknięty przez system. */
+    TAILSCALE_OFF,
+    /** VPN działa, ale adres Tailscale nie odpowiada – inna sieć VPN (np. Proton) albo NAS poza Tailscale. */
+    TAILSCALE_NO_ANSWER,
 }
 
 /**
@@ -80,11 +89,19 @@ class Nas(private val context: Context, private val settings: Settings) {
             }
         }
         var msg = errors.joinToString("; ").ifEmpty { "Brak adresów NAS w ustawieniach" }
+        val hint = vpnHint(settings.hostList())
+        when (hint) {
+            VpnHint.TAILSCALE_OFF -> msg = "Tailscale nie jest połączony na telefonie (brak sieci VPN) – poza domowym Wi-Fi " +
+                "NAS jest dostępny tylko przez Tailscale. $msg"
+            VpnHint.TAILSCALE_NO_ANSWER -> msg = "Działa sieć VPN, ale NAS nie odpowiada pod adresem Tailscale – sprawdź, czy " +
+                "połączony jest Tailscale (nie inna sieć VPN) i czy działa na NAS. $msg"
+            VpnHint.NONE -> {}
+        }
         if (!io.github.senk39.droid39.core.Permissions.localNetworkGranted(context)) {
             msg += ". " + io.github.senk39.droid39.core.Permissions.LOCAL_NETWORK_HINT
         }
         lastFailAt = System.currentTimeMillis()
-        _state.value = NasState.Offline(msg)
+        _state.value = NasState.Offline(msg, hint)
         throw RemoteUnavailable(msg)
     }
 
@@ -115,6 +132,36 @@ class Nas(private val context: Context, private val settings: Settings) {
         }
     }
 
+    /** Czy któraś aktywna sieć to VPN (Tailscale, Proton…). */
+    private fun vpnActive(): Boolean {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        @Suppress("DEPRECATION")
+        return cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }
+    }
+
+    private fun vpnHint(hosts: List<String>): VpnHint {
+        if (hosts.none { isTailscaleHost(it) }) return VpnHint.NONE
+        return if (vpnActive()) VpnHint.TAILSCALE_NO_ANSWER else VpnHint.TAILSCALE_OFF
+    }
+
+    init {
+        // po włączeniu Tailscale (lub powrocie do Wi-Fi) – od razu ponowna próba, bez czekania na synchronizację
+        runCatching {
+            val cm = context.getSystemService(ConnectivityManager::class.java)
+            val req = android.net.NetworkRequest.Builder()
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build()
+            cm?.registerNetworkCallback(req, object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = retryIfOffline()
+            })
+        }
+    }
+
+    private fun retryIfOffline() {
+        if (_state.value !is NasState.Offline) return
+        lastFailAt = 0
+        Thread { runCatching { get() } }.start()
+    }
+
     fun networkAvailable(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return true
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
@@ -131,6 +178,27 @@ class Nas(private val context: Context, private val settings: Settings) {
     fun streamingAllowed(): Boolean = settings.allowMobileStreaming || !metered()
 
     companion object {
+        /** Adres w Tailscale: nazwa *.ts.net, IPv4 100.64.0.0/10 albo IPv6 fd7a:115c:a1e0::/48. */
+        fun isTailscaleHost(host: String): Boolean {
+            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]")
+            if (h.endsWith(".ts.net")) return true
+            if (h.startsWith("fd7a:115c:a1e0:")) return true
+            val p = h.split('.')
+            if (p.size != 4) return false
+            val a = p[0].toIntOrNull() ?: return false
+            val b = p[1].toIntOrNull() ?: return false
+            return a == 100 && b in 64..127
+        }
+
+        const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
+
+        /** Otwiera aplikację Tailscale (fałsz, gdy nie jest zainstalowana). */
+        fun openTailscale(context: Context): Boolean {
+            val i = context.packageManager.getLaunchIntentForPackage(TAILSCALE_PACKAGE) ?: return false
+            context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        }
+
         fun reachable(host: String, port: Int, timeoutMs: Int): Boolean = try {
             Socket().use { it.connect(InetSocketAddress(host, port), timeoutMs); true }
         } catch (e: Exception) {

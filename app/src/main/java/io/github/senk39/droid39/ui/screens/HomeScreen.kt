@@ -175,6 +175,9 @@ fun HomeScreen() {
                 }
                 return@ScrollColumn
             }
+            (nas as? NasState.Offline)?.takeIf { it.vpn != io.github.senk39.droid39.sync.VpnHint.NONE }?.let { off ->
+                item(key = "tailscale") { TailscaleCard(off.vpn) }
+            }
             if (mirrorSuggestion != null || mirrorMsg != null) {
                 item {
                     Column(
@@ -321,7 +324,8 @@ private fun NasStatusIcon(nas: NasState) {
         is NasState.Online if warnings.isNotEmpty() -> Triple(Icons39.Cloud, if (warnings.any { it.serious }) C39.Warn else C39.Gold,
             "NAS: połączono · PC: " + warnings.joinToString(" · ") { it.text })
         is NasState.Online -> Triple(Icons39.Cloud, C39.Green, "NAS: połączono (${s.label})")
-        is NasState.Offline -> Triple(Icons39.CloudOff, C39.Warn, "NAS niedostępny")
+        is NasState.Offline -> Triple(Icons39.CloudOff, C39.Warn,
+            if (s.vpn == io.github.senk39.droid39.sync.VpnHint.TAILSCALE_OFF) "NAS niedostępny – Tailscale nie jest połączony" else "NAS niedostępny")
         NasState.NotConfigured -> Triple(Icons39.CloudOff, C39.Gold, "NAS nie jest skonfigurowany")
         NasState.Unknown -> Triple(Icons39.Cloud, C39.Text3, "NAS: jeszcze nie sprawdzono")
     }
@@ -330,6 +334,44 @@ private fun NasStatusIcon(nas: NasState) {
         if (nas is NasState.Online && warnings.isNotEmpty()) {
             Text("!", Modifier.align(Alignment.Center).padding(top = 2.dp), color = C39.Surface, fontSize = 12.sp,
                 fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** NAS nie odpowiada, a poza domem jest dostępny tylko przez Tailscale – wyraźna przyczyna i przycisk do aplikacji. */
+@Composable
+private fun TailscaleCard(hint: io.github.senk39.droid39.sync.VpnHint) {
+    val g = App.graph
+    val ctx = LocalContext.current
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp))
+            .background(C39.Warn.copy(alpha = 0.12f)).padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons39.CloudOff, null, Modifier.size(20.dp), tint = C39.Warn)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (hint == io.github.senk39.droid39.sync.VpnHint.TAILSCALE_OFF) "Tailscale nie jest połączony"
+                else "NAS nie odpowiada przez Tailscale",
+                fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+            )
+        }
+        Text(
+            if (hint == io.github.senk39.droid39.sync.VpnHint.TAILSCALE_OFF)
+                "Poza domowym Wi-Fi NAS jest dostępny tylko przez Tailscale, a na telefonie nie działa żadna sieć VPN " +
+                    "(Android mógł zamknąć Tailscale). Włącz połączenie w aplikacji Tailscale. Żeby system go nie zamykał: " +
+                    "Ustawienia → Aplikacje → Tailscale → Bateria → Bez ograniczeń."
+            else "Działa sieć VPN, ale NAS nie odpowiada pod adresem Tailscale. Android pozwala na jedną sieć VPN naraz – " +
+                "sprawdź, czy połączony jest Tailscale, a nie inna (np. Proton VPN), i czy Tailscale działa na NAS.",
+            color = C39.Text2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HomeButton("Otwórz Tailscale", filled = true) {
+                if (!io.github.senk39.droid39.sync.Nas.openTailscale(ctx)) {
+                    android.widget.Toast.makeText(ctx, "Aplikacja Tailscale nie jest zainstalowana", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            HomeButton("Spróbuj ponownie", filled = false) { g.nas.invalidate(); g.scope.launch { g.sync.syncNow() } }
         }
     }
 }
