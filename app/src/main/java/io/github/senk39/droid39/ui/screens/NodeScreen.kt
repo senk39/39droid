@@ -73,6 +73,9 @@ import io.github.senk39.droid39.ui.components.rememberLoad
 import io.github.senk39.droid39.ui.theme.C39
 import io.github.senk39.droid39.ui.theme.LocalAccent
 
+/** Kategoria Anime lub jej podkategoria (ścieżka węzła: klucze oddzielone znakiem U+001F) – utwory alfabetycznie. */
+private fun isAnime(path: String) = path == "anime" || path.startsWith("anime")
+
 /** Zapamiętany wybór filtrów Love Live! (jak w 39player – do zmiany ręcznej albo „Wyczyść filtry”). */
 object LlState {
     var filter by mutableStateOf(LlFilter())
@@ -113,8 +116,9 @@ private fun TrackNode(node: NodeRow) {
     val folderGroup = ll?.second ?: ""
     val stateFilter = LlState.filter
     val effective = if (folderGroup.isNotEmpty()) stateFilter.copy(group = folderGroup) else stateFilter
+    // w Love Live! filtr działa zawsze – domyślnie ukrywa wersje solowe utworów grupy, OST, off vocal, short, live, remiksy
     val filtered = remember(rows, effective, llIndex, ll) {
-        if (ll == null || rows == null || llIndex == null || !effective.active) rows
+        if (ll == null || rows == null || llIndex == null) rows
         else rows.filter { effective.matches(llIndex[it.id]) }
     }
     var albumsExpanded by rememberSaveable(node.id) { mutableStateOf(false) }
@@ -126,13 +130,14 @@ private fun TrackNode(node: NodeRow) {
         title = node.name,
         subtitle = filtered?.let {
             val base = "${T.tracks(it.size)} · ${T.totalTime(it.sumOf { r -> r.duration })}"
-            if (ll != null && effective.active && rows != null) "$base (z ${rows.size})" else base
+            if (ll != null && rows != null && rows.size != it.size) "$base (z ${rows.size})" else base
         },
         headerArt = node.art,
         actions = listOf(
             (if (pinned) "Nie trzymaj offline" else "Zawsze na telefonie (offline)") to { g.offline.toggleNode(node.path) },
             "Dodaj wszystkie do kolejki" to { filtered?.let { g.player.enqueue(it) } },
         ),
+        defaultSort = if (isAnime(node.path)) io.github.senk39.droid39.data.SortMode.TITLE else io.github.senk39.droid39.data.SortMode.DEFAULT,
         side = if (cols >= 2 && ll != null && roster != null && llIndex != null) ({ LoveLiveFilterBar(effective, folderGroup, roster, wide = true) }) else null,
         header = {
             if (node.vdbArtistId != null) item { VdbArtistLine(node) }
@@ -276,7 +281,7 @@ private fun LoveLiveFilterBar(state: LlFilter, folderGroup: String, roster: LlRo
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Filtry Love Live!", Modifier.weight(1f), color = accent, fontWeight = FontWeight.SemiBold, fontSize = if (wide) 15.sp else 13.sp)
             if (state.active && !(folderGroup.isNotEmpty() && state.copy(group = "") == LlFilter())) {
-                Text("Wyczyść", Modifier.clip(RoundedCornerShape(50)).clickable { LlState.filter = LlFilter() }.padding(6.dp), color = C39.Text2, fontSize = 12.sp)
+                Text("Domyślne", Modifier.clip(RoundedCornerShape(50)).clickable { LlState.filter = LlFilter() }.padding(6.dp), color = C39.Text2, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -285,8 +290,13 @@ private fun LoveLiveFilterBar(state: LlFilter, folderGroup: String, roster: LlRo
             FilterChip39("Postać", state.char.ifEmpty { null }, roster.chars.firstOrNull { it.name == state.char }?.icon, big = wide) { picker = "char" }
             FilterChip39("Subunit", state.unit.ifEmpty { null }, roster.units.firstOrNull { it.name == state.unit }?.icon, big = wide) { picker = "unit" }
             FilterChip39("Tylko solowe", if (state.solo) "tak" else null, null, big = wide) { LlState.filter = LlState.filter.copy(solo = !state.solo) }
-            FilterChip39("Instrumentalne", tri(state.inst), null, big = wide) { LlState.filter = LlState.filter.copy(inst = nextTri(state.inst)) }
-            FilterChip39("OST", tri(state.ost), null, big = wide) { LlState.filter = LlState.filter.copy(ost = nextTri(state.ost)) }
+            // rodzaje utworów: ukryte (domyślnie) → pokazane → tylko te → ukryte
+            KindChip("Wersje solowe / unitów", state.variant, wide) { LlState.filter = LlState.filter.copy(variant = nextTri(state.variant)) }
+            KindChip("OST", state.ost, wide) { LlState.filter = LlState.filter.copy(ost = nextTri(state.ost)) }
+            KindChip("Off vocal", state.inst, wide) { LlState.filter = LlState.filter.copy(inst = nextTri(state.inst)) }
+            KindChip("Short / TV size", state.short, wide) { LlState.filter = LlState.filter.copy(short = nextTri(state.short)) }
+            KindChip("Live", state.live, wide) { LlState.filter = LlState.filter.copy(live = nextTri(state.live)) }
+            KindChip("Remiksy", state.remix, wide) { LlState.filter = LlState.filter.copy(remix = nextTri(state.remix)) }
         }
         // obok nagłówka (szeroki ekran) – zawijane w kilka wierszy; w pionie – jeden przewijany wiersz
         if (wide) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { chips() }
@@ -312,13 +322,21 @@ private fun LoveLiveFilterBar(state: LlFilter, folderGroup: String, roster: LlRo
     }
 }
 
-private fun tri(v: String) = when (v) { "nie" -> "bez"; "tylko" -> "tylko"; else -> null }
-private fun nextTri(v: String) = when (v) { "tak" -> "nie"; "nie" -> "tylko"; else -> "tak" }
+private fun nextTri(v: String) = when (v) { "nie" -> "tak"; "tak" -> "tylko"; else -> "nie" }
+
+/** Rodzaj utworów: wyróżniony, gdy inny niż domyślnie ukryty. */
+@Composable
+private fun KindChip(label: String, mode: String, big: Boolean, onClick: () -> Unit) {
+    val value = when (mode) { "tak" -> "pokazane"; "tylko" -> "tylko te"; else -> "ukryte" }
+    FilterChip39(label, value, null, big = big, on = mode != "nie", onClick = onClick)
+}
 
 @Composable
-private fun FilterChip39(label: String, value: String?, icon: String?, enabled: Boolean = true, big: Boolean = false, onClick: () -> Unit) {
+private fun FilterChip39(
+    label: String, value: String?, icon: String?, enabled: Boolean = true, big: Boolean = false, on: Boolean = value != null,
+    onClick: () -> Unit,
+) {
     val accent = LocalAccent.current
-    val on = value != null
     Row(
         Modifier.clip(RoundedCornerShape(50))
             .background(if (on) accent.copy(alpha = 0.18f) else C39.Surface2)
@@ -327,7 +345,7 @@ private fun FilterChip39(label: String, value: String?, icon: String?, enabled: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { LlIcon(icon, if (big) 22.dp else 18.dp); Spacer(Modifier.width(4.dp)) }
-        Text(if (on) "$label: $value" else label, fontSize = if (big) 14.sp else 12.sp, color = if (on) accent else if (enabled) C39.Text else C39.Text3, maxLines = 1)
+        Text(if (value != null) "$label: $value" else label, fontSize = if (big) 14.sp else 12.sp, color = if (on) accent else if (enabled) C39.Text else C39.Text3, maxLines = 1)
     }
 }
 
@@ -389,7 +407,9 @@ fun MultiScreen(label: String, paths: List<String>) {
     val nodes = remember(paths, snapV) { paths.mapNotNull { lib.nodeByPath(it) } }
     Column(Modifier.fillMaxSize()) {
         TopBar(label)
-        TrackListScreen(rows, ListCtx(label, noVdb = paths.isNotEmpty() && paths.all { lib.noVdbPath(it) }), label, header = {
+        TrackListScreen(rows, ListCtx(label, noVdb = paths.isNotEmpty() && paths.all { lib.noVdbPath(it) }), label,
+            defaultSort = if (paths.isNotEmpty() && paths.all(::isAnime)) io.github.senk39.droid39.data.SortMode.TITLE
+            else io.github.senk39.droid39.data.SortMode.DEFAULT, header = {
             item { SectionTitle("Kategorie") }
             items(nodes, key = { it.id }) { n -> NodeRowView(n) { Nav.go(Route.Node(n.id)) } }
             item { SectionTitle("Utwory") }

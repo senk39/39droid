@@ -349,10 +349,15 @@ class SnapshotDb private constructor(private val db: SQLiteDatabase, val file: F
     fun llTracks(): Map<Int, LlTrack> {
         val out = HashMap<Int, LlTrack>()
         fun set(s: String?) = s?.split('|')?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
-        db.rawQuery("SELECT track_id, groups, chars, voices, units, solo, inst, ost FROM ll_track", null).use { c ->
+        // starsze migawki (sync39 sprzed rodzajów utworów) nie mają kolumn variant…remix – wtedy same zera
+        val kinds = db.rawQuery("SELECT 1 FROM pragma_table_info('ll_track') WHERE name = 'variant'", null).use { it.moveToFirst() }
+        val extra = if (kinds) ", variant, ost_unique, short, live, remix" else ""
+        db.rawQuery("SELECT track_id, groups, chars, voices, units, solo, inst, ost$extra FROM ll_track", null).use { c ->
+            fun flag(i: Int) = kinds && c.getInt(i) != 0
             while (c.moveToNext()) out[c.getInt(0)] = LlTrack(
                 set(c.getString(1)), set(c.getString(2)), set(c.getString(3)), set(c.getString(4)),
-                c.getInt(5) != 0, c.getInt(6) != 0, c.getInt(7) != 0
+                c.getInt(5) != 0, c.getInt(6) != 0, c.getInt(7) != 0,
+                variant = flag(8), ostUnique = flag(9), short = flag(10), live = flag(11), remix = flag(12),
             )
         }
         return out

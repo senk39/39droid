@@ -113,8 +113,10 @@ fun TrackListScreen(
     playRows: (() -> List<TrackRow>)? = null,
     /** Panel obok nagłówka (szeroki ekran) albo pod nim, np. filtry Love Live!. */
     side: (@Composable () -> Unit)? = null,
+    /** Sortowanie na start (np. w Anime – alfabetycznie). */
+    defaultSort: SortMode = SortMode.DEFAULT,
 ) {
-    var sort by rememberSaveable(title) { mutableStateOf(SortMode.DEFAULT) }
+    var sort by rememberSaveable(title) { mutableStateOf(defaultSort) }
     var desc by rememberSaveable(title) { mutableStateOf(false) }
     var filter by rememberSaveable(title) { mutableStateOf("") }
     var showFilter by rememberSaveable(title) { mutableStateOf(false) }

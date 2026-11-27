@@ -84,6 +84,13 @@ data class LlTrack(
     val solo: Boolean,
     val inst: Boolean,
     val ost: Boolean,
+    /** Wersja solowa / subunitu utworu, który ma wersję śpiewaną przez całą grupę. */
+    val variant: Boolean = false,
+    /** Piosenka z albumu OST, której poza OST w bibliotece nie ma – zostaje widoczna przy ukrytym OST. */
+    val ostUnique: Boolean = false,
+    val short: Boolean = false,
+    val live: Boolean = false,
+    val remix: Boolean = false,
 )
 
 data class LlEntry(val name: String, val group: String?, val members: List<String>, val icon: String?, val count: Int)
@@ -97,15 +104,24 @@ data class LlRoster(
     val nodePath: String?,
 )
 
-/** Stan filtrów Love Live! (jak lovelive.DEFAULT_STATE w 39player). */
+/**
+ * Stan filtrów Love Live!. Rodzaje utworów: "tak" – pokazane, "nie" – ukryte, "tylko" – tylko ten rodzaj.
+ * Domyślnie widać same podstawowe utwory: bez wersji solowych / subunitów utworów grupy, OST (poza piosenkami,
+ * których nie ma gdzie indziej), off vocal, wersji short, live i remiksów.
+ */
 data class LlFilter(
     val group: String = "",
     val char: String = "",
     val unit: String = "",
     val solo: Boolean = false,
-    val inst: String = "tak",     // tak / nie / tylko
-    val ost: String = "tak",
+    val inst: String = "nie",
+    val ost: String = "nie",
+    val variant: String = "nie",
+    val short: String = "nie",
+    val live: String = "nie",
+    val remix: String = "nie",
 ) {
+    /** Inny niż domyślny (np. do przycisku „Domyślne”). */
     val active get() = this != LlFilter()
 
     fun matches(x: LlTrack?): Boolean {
@@ -114,7 +130,13 @@ data class LlFilter(
         if (char.isNotEmpty() && char !in x.voices) return false
         if (unit.isNotEmpty() && unit !in x.units) return false
         if (solo && !x.solo) return false
-        for ((mode, flag) in listOf(inst to x.inst, ost to x.ost)) {
+        // OST ukryty: zostają piosenki, których poza albumami OST nie ma
+        val ostShown = if (ost == "nie") !x.ost || x.ostUnique else x.ost
+        if (ost == "nie" && !ostShown) return false
+        if (ost == "tylko" && !x.ost) return false
+        // „Tylko solowe” – wersje solowe utworów grupy są wtedy tym, czego się szuka
+        val variantMode = if (solo && variant == "nie") "tak" else variant
+        for ((mode, flag) in listOf(inst to x.inst, variantMode to x.variant, short to x.short, live to x.live, remix to x.remix)) {
             if (mode == "nie" && flag) return false
             if (mode == "tylko" && !flag) return false
         }

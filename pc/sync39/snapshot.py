@@ -64,7 +64,8 @@ CREATE TABLE unlistened(track_id INTEGER PRIMARY KEY, pos INTEGER NOT NULL, adde
     best INTEGER NOT NULL DEFAULT 0, liked INTEGER NOT NULL DEFAULT 0, listened INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE commit_log(id INTEGER PRIMARY KEY, ts REAL, items TEXT);
 CREATE TABLE ll_track(track_id INTEGER PRIMARY KEY, groups TEXT, chars TEXT, voices TEXT, units TEXT,
-    solo INTEGER, inst INTEGER, ost INTEGER);
+    solo INTEGER, inst INTEGER, ost INTEGER, variant INTEGER, ost_unique INTEGER, short INTEGER, live INTEGER,
+    remix INTEGER);
 CREATE TABLE ll_roster(kind TEXT NOT NULL, pos INTEGER NOT NULL, name TEXT NOT NULL, grp TEXT, members TEXT,
     icon TEXT, count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(kind, pos)) WITHOUT ROWID;
 CREATE TABLE franchise(id INTEGER PRIMARY KEY, pos INTEGER NOT NULL, label TEXT NOT NULL, node_path TEXT,
@@ -298,13 +299,21 @@ def build(lib, cfg: dict, out_path: str, applied: dict | None = None, log=print)
         ll = F.match_child(anime, "Love Live!")
         if ll is not None:
             idx = L.build_index(lib, ll)
+            # rodzaje utworów do domyślnych filtrów telefonu (wersje solowe, OST, short, live, remiksy)
+            from . import llkinds as K
+            kinds = K.classify([
+                K.Track(tid, lib.tracks[tid].title or "", list(lib.tracks[tid].rel), set(x.chars), set(x.units),
+                        set(x.groups), bool(x.inst), bool(x.ost))
+                for tid, x in idx.info.items() if tid in lib.tracks])
             lrows = []
             for tid, x in idx.info.items():
                 if tid in exported:
+                    k = kinds.get(tid) or K.Kinds()
                     lrows.append((tid, "|".join(sorted(x.groups)), "|".join(sorted(x.chars)),
                                   "|".join(sorted(x.voices)), "|".join(sorted(x.units)),
-                                  int(x.solo), int(x.inst), int(x.ost)))
-            con.executemany("INSERT INTO ll_track VALUES(?,?,?,?,?,?,?,?)", lrows)
+                                  int(x.solo), int(x.inst), int(x.ost or k.ost), int(k.variant), int(k.ost_unique),
+                                  int(k.short), int(k.live), int(k.remix)))
+            con.executemany("INSERT INTO ll_track VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", lrows)
             roster = []
             gcount = dict(idx.groups())
             ccount = {c: n for _g, c, n in idx.chars()}

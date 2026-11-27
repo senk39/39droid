@@ -63,6 +63,9 @@ class TextTest {
 
     @Test
     fun loveLiveFilter() {
+        // stare zachowanie (wszystkie rodzaje pokazane) – filtry grupy / postaci / subunitu
+        fun LlFilter(group: String = "", char: String = "", unit: String = "", solo: Boolean = false, ost: String = "tak") =
+            io.github.senk39.droid39.data.LlFilter(group, char, unit, solo, "tak", ost, "tak", "tak", "tak", "tak")
         val riko = LlTrack(setOf("Aqours"), setOf("Riko Sakurauchi"), setOf("Riko Sakurauchi"), emptySet(), solo = true, inst = false, ost = false)
         val gk = LlTrack(setOf("Aqours"), emptySet(), setOf("Riko Sakurauchi", "Yoshiko Tsushima", "Mari Ohara"), setOf("Guilty Kiss"), solo = false, inst = false, ost = false)
         val ost = LlTrack(emptySet(), emptySet(), emptySet(), emptySet(), solo = false, inst = false, ost = true)
@@ -77,7 +80,29 @@ class TextTest {
         assertTrue(LlFilter(ost = "tylko").matches(ost))
         assertFalse(LlFilter(ost = "tylko").matches(riko))
         assertTrue(LlFilter().matches(null))
-        assertFalse(LlFilter().active)
-        assertTrue(LlFilter(inst = "nie").active)
+        assertFalse(io.github.senk39.droid39.data.LlFilter().active)
+    }
+
+    @Test
+    fun loveLiveDefaultsHideVersions() {
+        fun t(variant: Boolean = false, ost: Boolean = false, ostUnique: Boolean = false, inst: Boolean = false,
+              short: Boolean = false, live: Boolean = false, remix: Boolean = false, solo: Boolean = false) =
+            LlTrack(setOf("μ's"), emptySet(), emptySet(), emptySet(), solo, inst, ost, variant, ostUnique, short, live, remix)
+        val d = LlFilter()
+        assertTrue(d.matches(t()))
+        assertFalse(d.matches(t(variant = true, solo = true)))
+        assertFalse(d.matches(t(ost = true)))
+        assertTrue(d.matches(t(ost = true, ostUnique = true)))          // piosenka tylko z OST zostaje
+        assertFalse(d.matches(t(inst = true)))
+        assertFalse(d.matches(t(short = true)))
+        assertFalse(d.matches(t(live = true)))
+        assertFalse(d.matches(t(remix = true)))
+        // ręczne włączenie rodzaju
+        assertTrue(d.copy(remix = "tak").matches(t(remix = true)))
+        assertFalse(d.copy(remix = "tylko").matches(t()))
+        assertTrue(d.copy(ost = "tylko").matches(t(ost = true)))
+        // „Tylko solowe” pokazuje też solowe wersje utworów grupy
+        assertTrue(d.copy(solo = true).matches(t(variant = true, solo = true)))
+        assertTrue(LlFilter(inst = "tak").active)
     }
 }
